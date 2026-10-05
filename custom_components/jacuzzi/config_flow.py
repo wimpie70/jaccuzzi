@@ -129,15 +129,11 @@ class JacuzziConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class JacuzziOptionsFlow(OptionsFlow):
-    """Edit the same fields post-install."""
-
-    def __init__(self, config_entry) -> None:
-        """Store the config entry."""
-        self._config_entry = config_entry
+    """Edit the same fields post-install (self.config_entry is set by HA)."""
 
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Show the options form."""
         if user_input is not None:
             return self.async_create_entry(data=_normalize(user_input))
-        current = {**self._config_entry.data, **self._config_entry.options}
+        current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(step_id="init", data_schema=_schema(current))
