@@ -1,0 +1,212 @@
+	
+home_assistant	
+arch	"x86_64"
+dev	false
+docker	true
+hassio	false
+installation_type	"Home Assistant Container"
+os_name	"Linux"
+os_version	"7.0.0-38-generic"
+python_version	"3.14.6"
+timezone	"Europe/Amsterdam"
+version	"2026.8.2"
+virtualenv	false
+container_arch	"amd64"
+run_as_root	true
+custom_components	
+ramses_cc	
+documentation	"https://github.com/ramses-rf/ramses_cc"
+version	"0.60.8"
+requirements	
+0	"aioesphomeapi>=45.3.1"
+1	"aiousbwatcher>=1.1.2"
+2	"pyserial-asyncio-fast>=0.16"
+3	"ramses-rf==0.60.8"
+4	"serialx>=1.8.2"
+ramses_extras	
+documentation	"https://github.com/wimpie70/ramses_extras"
+version	"0.22.0"
+requirements	[]
+hacs	
+documentation	"https://hacs.xyz/docs/use/"
+version	"2.0.5"
+requirements	
+0	"aiogithubapi>=22.10.1"
+solaredge_modbus_multi	
+documentation	"https://github.com/WillCodeForCats/solaredge-modbus-multi/wiki"
+version	"4.0.4"
+requirements	
+0	"modbus-connection[tmodbus]>=4.10.0"
+1	"tmodbus>=0.6.1"
+2	"awesomeversion>=25.5.0"
+gecko	
+documentation	"https://github.com/geckoal/ha-gecko-integration"
+version	"2.1.1"
+requirements	
+0	"awscrt==0.36.1"
+1	"awsiotsdk==1.31.0"
+2	"gecko-iot-client==1.0.3"
+localtuya	
+documentation	"https://github.com/rospogrigio/localtuya/"
+version	"5.2.3"
+requirements	[]
+integration_manifest	
+domain	"localtuya"
+name	"LocalTuya integration"
+codeowners	
+0	"rospogrigio"
+1	"postlund"
+config_flow	true
+dependencies	[]
+documentation	"https://github.com/rospogrigio/localtuya/"
+iot_class	"local_push"
+issue_tracker	"https://github.com/rospogrigio/localtuya/issues"
+requirements	[]
+version	"5.2.3"
+is_built_in	false
+overwrites_built_in	false
+setup_times	{}
+data	
+region	"eu"
+username	"localtuya"
+no_cloud	true
+client_id	"..."
+user_id	"..."
+client_secret	"..."
+devices	{}
+cloud_devices	{}
+issues	[]
+home_assistant
+installation_type
+
+
+
+2026-10-05 14:16:17.088 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_37_168270_status -> on
+2026-10-05 14:16:17.088 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.dis_37_169161_status -> on
+2026-10-05 14:16:17.089 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.co2_37_126776_status -> on
+2026-10-05 14:17:08.574 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:17:08.597 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'indoor_temperature': 'sensor.fan_32_153289_indoor_temperature', 'indoor_humidity': 'sensor.fan_32_153289_indoor_humidity', 'indoor_abs_humidity': None}
+2026-10-05 14:17:08.598 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: no metric_cfg for indoor_abs_humidity, falling back
+2026-10-05 14:17:08.598 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:17:08.598 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_indoor_temperature humid=sensor.fan_32_153289_indoor_humidity (device_id=32_153289, temp_type=indoor_temp, humidity_type=indoor_humidity)
+2026-10-05 14:17:08.598 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: fallback path temp=16.24 rh=67.0 result=9.25
+2026-10-05 14:17:08.599 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity indoor_absolute_humidity: wrote state=9.25 entity_id=sensor.indoor_absolute_humidity_32_153289 verify_state=9.25 (entity in state machine: True)
+2026-10-05 14:17:08.600 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'outdoor_temperature': 'sensor.fan_32_153289_outdoor_temperature', 'outdoor_humidity': 'sensor.fan_32_153289_outdoor_humidity', 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.600 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: no metric_cfg for outdoor_abs_humidity, falling back
+2026-10-05 14:17:08.600 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:17:08.600 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_outdoor_temperature humid=sensor.fan_32_153289_outdoor_humidity (device_id=32_153289, temp_type=outdoor_temp, humidity_type=outdoor_humidity)
+2026-10-05 14:17:08.600 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback path temp=19.4 rh=70.0 result=11.66
+2026-10-05 14:17:08.601 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: wrote state=11.66 entity_id=sensor.outdoor_absolute_humidity_32_153289 verify_state=11.66 (entity in state machine: True)
+2026-10-05 14:17:08.602 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'outdoor_temperature': 'sensor.fan_32_153289_outdoor_temperature', 'outdoor_humidity': 'sensor.fan_32_153289_outdoor_humidity', 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.602 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: no metric_cfg for outdoor_abs_humidity, falling back
+2026-10-05 14:17:08.602 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:17:08.602 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_outdoor_temperature humid=sensor.fan_32_153289_outdoor_humidity (device_id=32_153289, temp_type=outdoor_temp, humidity_type=outdoor_humidity)
+2026-10-05 14:17:08.602 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback path temp=19.4 rh=70.0 result=11.66
+2026-10-05 14:17:08.618 DEBUG (MainThread) [custom_components.ramses_extras.features.temp_control.automation] Decision for 32:153289: mode=heating_retention (prev=heating_retention, indoor=16.2, outdoor=19.4, supply=17.0, comfort=18.3, RH=67.0%, areas=1)
+2026-10-05 14:17:08.625 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Validating entities for device_id=32_153289
+2026-10-05 14:17:08.625 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base.humidity_control] Executing get_entity_mappings
+2026-10-05 14:17:08.632 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base.humidity_control] Executing get_entity_mappings
+2026-10-05 14:17:08.633 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base] get_entity_mappings: sending abs_humidity keys for device 32_153289: {'indoor_abs': 'sensor.indoor_absolute_humidity_32_153289', 'outdoor_abs': 'sensor.outdoor_absolute_humidity_32_153289', 'absolute_humidity_offset_state': 'number.absolute_humidity_offset_32_153289', 'indoor_abs_humidity': None, 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.634 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.ramses_commands] Sending Ramses command to 32:153289: 22F1 Set fan to low speed
+2026-10-05 14:17:08.640 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base] get_entity_mappings: sending abs_humidity keys for device 32_153289: {'indoor_abs': 'sensor.indoor_absolute_humidity_32_153289', 'outdoor_abs': 'sensor.outdoor_absolute_humidity_32_153289', 'absolute_humidity_offset_state': 'number.absolute_humidity_offset_32_153289', 'indoor_abs_humidity': None, 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.641 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Already processing 32_153289, skipping re-entrant call
+2026-10-05 14:17:08.741 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_37_168270_status -> on
+2026-10-05 14:17:08.744 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:17:08.761 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.ramses_commands] Ramses command sent: Set fan to low speed
+2026-10-05 14:17:08.784 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:17:08.866 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:17:08.882 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'outdoor_temperature': 'sensor.fan_32_153289_outdoor_temperature', 'outdoor_humidity': 'sensor.fan_32_153289_outdoor_humidity', 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.882 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: no metric_cfg for outdoor_abs_humidity, falling back
+2026-10-05 14:17:08.882 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:17:08.882 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_outdoor_temperature humid=sensor.fan_32_153289_outdoor_humidity (device_id=32_153289, temp_type=outdoor_temp, humidity_type=outdoor_humidity)
+2026-10-05 14:17:08.882 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback path temp=19.41 rh=70.0 result=11.67
+2026-10-05 14:17:08.883 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: wrote state=11.67 entity_id=sensor.outdoor_absolute_humidity_32_153289 verify_state=11.67 (entity in state machine: True)
+2026-10-05 14:17:08.888 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base.humidity_control] Executing get_entity_mappings
+2026-10-05 14:17:08.891 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base] get_entity_mappings: sending abs_humidity keys for device 32_153289: {'indoor_abs': 'sensor.indoor_absolute_humidity_32_153289', 'outdoor_abs': 'sensor.outdoor_absolute_humidity_32_153289', 'absolute_humidity_offset_state': 'number.absolute_humidity_offset_32_153289', 'indoor_abs_humidity': None, 'outdoor_abs_humidity': None}
+2026-10-05 14:17:08.891 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Recently processed 32_153289 (0.1s ago), skipping redundant run
+2026-10-05 14:17:17.084 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.hgi_18_130236_hgi_18_130236_online -> on
+2026-10-05 14:17:17.087 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:17:17.088 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_29_176861_status -> on
+2026-10-05 14:17:17.088 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_37_168270_status -> on
+2026-10-05 14:17:17.089 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.dis_37_169161_status -> on
+2026-10-05 14:17:17.089 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.co2_37_126776_status -> on
+2026-10-05 14:17:18.383 DEBUG (MainThread) [custom_components.ramses_extras.features.temp_control.automation] Decision for 32:153289: mode=heating_retention (prev=heating_retention, indoor=16.2, outdoor=19.4, supply=17.0, comfort=18.3, RH=67.0%, areas=1)
+2026-10-05 14:17:31.326 ERROR (MainThread) [custom_components.localtuya.pytuya] [bf2...nfr] Failed to get status: 
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/usr/local/lib/python3.14/asyncio/locks.py", line 407, in acquire
+    await fut
+asyncio.exceptions.CancelledError
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 863, in detect_available_dps
+    data = await self.status()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 795, in status
+    status = await self.exchange(DP_QUERY)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 769, in exchange
+    msg = await self.dispatcher.wait_for(seqno, payload.cmd)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 450, in wait_for
+    await asyncio.wait_for(self.listeners[seqno].acquire(), timeout=timeout)
+  File "/usr/local/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/usr/local/lib/python3.14/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+2026-10-05 14:18:17.085 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:18:17.086 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_29_176861_status -> on
+2026-10-05 14:18:17.087 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.rem_37_168270_status -> on
+2026-10-05 14:18:17.087 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.dis_37_169161_status -> on
+2026-10-05 14:18:17.088 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.co2_37_126776_status -> on
+2026-10-05 14:18:52.246 ERROR (MainThread) [custom_components.localtuya.pytuya] [bf2...nfr] Failed to get status: 
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/usr/local/lib/python3.14/asyncio/locks.py", line 407, in acquire
+    await fut
+asyncio.exceptions.CancelledError
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 863, in detect_available_dps
+    data = await self.status()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 795, in status
+    status = await self.exchange(DP_QUERY)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 769, in exchange
+    msg = await self.dispatcher.wait_for(seqno, payload.cmd)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/config/custom_components/localtuya/pytuya/__init__.py", line 450, in wait_for
+    await asyncio.wait_for(self.listeners[seqno].acquire(), timeout=timeout)
+  File "/usr/local/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/usr/local/lib/python3.14/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+2026-10-05 14:18:58.799 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.co2_37_126776_status -> on
+2026-10-05 14:18:58.803 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:18:58.833 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:18:58.911 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.transport_monitor] Transport monitor: pool entity binary_sensor.fan_32_153289_status -> on
+2026-10-05 14:18:58.927 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'outdoor_temperature': 'sensor.fan_32_153289_outdoor_temperature', 'outdoor_humidity': 'sensor.fan_32_153289_outdoor_humidity', 'outdoor_abs_humidity': None}
+2026-10-05 14:18:58.927 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: no metric_cfg for outdoor_abs_humidity, falling back
+2026-10-05 14:18:58.927 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:18:58.927 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_outdoor_temperature humid=sensor.fan_32_153289_outdoor_humidity (device_id=32_153289, temp_type=outdoor_temp, humidity_type=outdoor_humidity)
+2026-10-05 14:18:58.927 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback path temp=19.5 rh=71.0 result=11.9
+2026-10-05 14:18:58.928 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: wrote state=11.9 entity_id=sensor.outdoor_absolute_humidity_32_153289 verify_state=11.9 (entity in state machine: True)
+2026-10-05 14:18:58.933 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: device_id=32:153289 type=FAN metric_cfg={} mappings={'outdoor_temperature': 'sensor.fan_32_153289_outdoor_temperature', 'outdoor_humidity': 'sensor.fan_32_153289_outdoor_humidity', 'outdoor_abs_humidity': None}
+2026-10-05 14:18:58.934 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: no metric_cfg for outdoor_abs_humidity, falling back
+2026-10-05 14:18:58.934 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: sensor_control path result=None
+2026-10-05 14:18:58.934 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback entities: temp=sensor.fan_32_153289_outdoor_temperature humid=sensor.fan_32_153289_outdoor_humidity (device_id=32_153289, temp_type=outdoor_temp, humidity_type=outdoor_humidity)
+2026-10-05 14:18:58.934 DEBUG (MainThread) [custom_components.ramses_extras.features.default.platforms.sensor] abs_humidity outdoor_absolute_humidity: fallback path temp=19.5 rh=71.0 result=11.9
+2026-10-05 14:18:58.945 DEBUG (MainThread) [custom_components.ramses_extras.features.temp_control.automation] Decision for 32:153289: mode=heating_retention (prev=heating_retention, indoor=16.2, outdoor=19.5, supply=17.0, comfort=18.3, RH=67.0%, areas=1)
+2026-10-05 14:18:58.947 DEBUG (MainThread) [custom_components.ramses_extras.features.humidity_control.automation] Validating entities for device_id=32_153289
+2026-10-05 14:18:58.949 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base.humidity_control] Executing get_entity_mappings
+2026-10-05 14:18:58.953 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.websocket_base] get_entity_mappings: sending abs_humidity keys for device 32_153289: {'indoor_abs': 'sensor.indoor_absolute_humidity_32_153289', 'outdoor_abs': 'sensor.outdoor_absolute_humidity_32_153289', 'absolute_humidity_offset_state': 'number.absolute_humidity_offset_32_153289', 'indoor_abs_humidity': None, 'outdoor_abs_humidity': None}
+2026-10-05 14:18:58.954 DEBUG (MainThread) [custom_components.ramses_extras.framework.helpers.r

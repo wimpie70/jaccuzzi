@@ -65,7 +65,16 @@ Sterke vermoedens (waarden passen op fabrieksdefaults):
 
 ## Lokaal via localtuya (geen cloud)
 
-HACS-integratie **localtuya** (rospogriggin). Voeg device toe met:
+**Let op: het device spreekt ALLEEN protocol 3.5** (getest 2026-10-05:
+3.3/3.4 → TCP-connectie OK maar géén DPs; 3.5 → 33 DPs). Gebruik dus
+NIET de originele rospogrigio/localtuya (geen 3.5 in dropdown, repo
+vrijwel onbeheerd) maar:
+
+- **`xZetsubou/hass-localtuya`** — actieve fork mét 3.5, of
+- **`make-all/tuya-local`** — protocol "auto"/3.5, heeft al een
+  `poolex_qline_heatpump.yaml` device-config
+
+Geen cloud-API-account/username nodig — device handmatig toevoegen met:
 
 - Device ID: `bf20da734a1d2c4846onfr`
 - Local key: uit `devices.json` (gitignored)
