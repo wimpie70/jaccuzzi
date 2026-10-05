@@ -1,7 +1,7 @@
 # Circulatiepomp-aansturing o.b.v. echte kuip-temperatuur (Gecko climate-attr)
 # vs Poolex-setpoint. input_boolean voorkomt conflict met Gecko-filtercycli.
 #
-# LET OP: fan.jaccuzzi_waterfall = vermoedelijk de circulatiepomp — verifieer!
+# fan.jaccuzzi_waterfall = circulatiepomp (bevestigd)
 
 - alias: "Jacuzzi - circulatiepomp AAN bij warmtevraag"
   triggers:
@@ -39,10 +39,17 @@
       entity_id: switch.pool_heat_pump_switch
       to: "off"
       for: "00:03:00"
+    - trigger: numeric_state   # herkansing als compressor net stopte
+      entity_id: sensor.pool_heat_pump_compressor_strength
+      below: 1
+      for: "00:03:00"
   conditions:
     - condition: state
       entity_id: input_boolean.jacuzzi_pomp_door_ha
       state: "on"          # alleen uit als WIJ hem hebben aangezet
+    - condition: template  # NOOIT uit terwijl de compressor loopt (overhitting)
+      value_template: >-
+        {{ states('sensor.pool_heat_pump_compressor_strength')|float(0) == 0 }}
   actions:
     - action: fan.turn_off
       target:
@@ -50,3 +57,28 @@
     - action: input_boolean.turn_off
       target:
         entity_id: input_boolean.jacuzzi_pomp_door_ha
+
+- alias: "Jacuzzi - FAILSAFE pomp aan zolang compressor draait"
+  # Vangt elk geval af waarin iets anders de pomp uitzette terwijl de
+  # warmtepomp produceert — stilstaand water in de wisselaar oververhit
+  # (d1) en koelt niet af.
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.pool_heat_pump_compressor_strength
+      above: 0
+      for: "00:00:15"
+  conditions:
+    - condition: state
+      entity_id: fan.jaccuzzi_waterfall
+      state: "off"
+  actions:
+    - action: fan.turn_on
+      target:
+        entity_id: fan.jaccuzzi_waterfall
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.jacuzzi_pomp_door_ha
+    - action: notify.notify
+      data:
+        title: "Jacuzzi: pomp hersteld"
+        message: "De circulatiepomp stond uit terwijl de compressor draaide — weer aangezet."
