@@ -1,0 +1,177 @@
+# Jacuzzi/Poolex package — kopieer naar /config/packages/jacuzzi.yaml
+# en voeg toe aan configuration.yaml:
+#
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# Bevat: helper (pomp-door-HA vlag) + alle automations.
+# Entities (tuya-local + Gecko):
+#   climate.pool_heat_pump                  — Poolex aan/uit + setpoint
+#   sensor.pool_heat_pump_compressor_duty_cycle — >0 = compressor draait
+#   binary_sensor.pool_heat_pump_problem    — fault-bit van de unit
+#   climate.jaccuzzi_thermostat_1           — Gecko: echte kuip-temp (attr)
+#   fan.jaccuzzi_waterfall                  — circulatiepomp (bevestigd)
+#   select.jaccuzzi_watercare_mode          — Gecko Watercare
+
+jacuzzi:
+  input_boolean:
+    jacuzzi_pomp_door_ha:
+      name: "Jacuzzi pomp door HA"
+      icon: mdi:pump
+
+  automation:
+    # ---- Kookpiek-blokkade: Poolex uit tijdens 16:30-20:00 ----
+    - id: jacuzzi_piekblokkade_aan
+      alias: "Jacuzzi - piekblokkade AAN (16:30)"
+      triggers:
+        - trigger: time
+          at: "16:30:00"
+      actions:
+        - action: climate.set_hvac_mode
+          target:
+            entity_id: climate.pool_heat_pump
+          data:
+            hvac_mode: "off"
+        # Extra slot op de deur: Watercare beperkt ook de bijstook
+        - action: select.select_option
+          target:
+            entity_id: select.jaccuzzi_watercare_mode
+          data:
+            option: "Super Savings"
+
+    - id: jacuzzi_piekblokkade_uit
+      alias: "Jacuzzi - piekblokkade UIT (20:00)"
+      triggers:
+        - trigger: time
+          at: "20:00:00"
+      actions:
+        - action: climate.set_hvac_mode
+          target:
+            entity_id: climate.pool_heat_pump
+          data:
+            hvac_mode: "heat"
+        - action: select.select_option
+          target:
+            entity_id: select.jaccuzzi_watercare_mode
+          data:
+            option: "Savings"
+
+    # ---- Circulatiepomp-aansturing o.b.v. echte kuip-temperatuur ----
+    - id: jacuzzi_pomp_aan_warmtevraag
+      alias: "Jacuzzi - circulatiepomp AAN bij warmtevraag"
+      triggers:
+        - trigger: template
+          value_template: >-
+            {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) <
+               state_attr('climate.pool_heat_pump','temperature')|float(38) - 1.0 }}
+        - trigger: state
+          entity_id: climate.pool_heat_pump
+          to: "heat"
+      conditions:
+        - condition: template
+          value_template: "{{ not is_state('climate.pool_heat_pump','off') }}"
+        - condition: template
+          value_template: >-
+            {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) <
+               state_attr('climate.pool_heat_pump','temperature')|float(38) - 1.0 }}
+      actions:
+        - action: fan.turn_on
+          target:
+            entity_id: fan.jaccuzzi_waterfall
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.jacuzzi_pomp_door_ha
+
+    - id: jacuzzi_pomp_uit_setpoint
+      alias: "Jacuzzi - circulatiepomp UIT bij setpoint bereikt"
+      triggers:
+        - trigger: template
+          value_template: >-
+            {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) >=
+               state_attr('climate.pool_heat_pump','temperature')|float(38) }}
+          for: "00:03:00"      # nadraaitijd
+        - trigger: state
+          entity_id: climate.pool_heat_pump
+          to: "off"
+          for: "00:03:00"
+        - trigger: numeric_state   # herkansing als compressor net stopte
+          entity_id: sensor.pool_heat_pump_compressor_duty_cycle
+          below: 1
+          for: "00:03:00"
+      conditions:
+        - condition: state
+          entity_id: input_boolean.jacuzzi_pomp_door_ha
+          state: "on"          # alleen uit als WIJ hem hebben aangezet
+        - condition: template  # NOOIT uit terwijl de compressor loopt
+          value_template: >-
+            {{ states('sensor.pool_heat_pump_compressor_duty_cycle')|float(0) == 0 }}
+      actions:
+        - action: fan.turn_off
+          target:
+            entity_id: fan.jaccuzzi_waterfall
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.jacuzzi_pomp_door_ha
+
+    - id: jacuzzi_failsafe_pomp_bij_compressor
+      alias: "Jacuzzi - FAILSAFE pomp aan zolang compressor draait"
+      # Vangt elk geval af waarin iets anders de pomp uitzette terwijl de
+      # warmtepomp produceert — stilstaand water in de wisselaar oververhit
+      # (d1) en koelt niet af.
+      triggers:
+        - trigger: numeric_state
+          entity_id: sensor.pool_heat_pump_compressor_duty_cycle
+          above: 0
+          for: "00:00:15"
+      conditions:
+        - condition: state
+          entity_id: fan.jaccuzzi_waterfall
+          state: "off"
+      actions:
+        - action: fan.turn_on
+          target:
+            entity_id: fan.jaccuzzi_waterfall
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.jacuzzi_pomp_door_ha
+        - action: notify.notify
+          data:
+            title: "Jacuzzi: pomp hersteld"
+            message: "De circulatiepomp stond uit terwijl de compressor draaide — weer aangezet."
+
+    # ---- Monitoring ----
+    - id: jacuzzi_poolex_fault_bit
+      alias: "Jacuzzi - Poolex meldt probleem (fault-bit)"
+      triggers:
+        - trigger: state
+          entity_id: binary_sensor.pool_heat_pump_problem
+          to: "on"
+          for: "00:01:00"
+      actions:
+        - action: notify.notify
+          data:
+            title: "Jacuzzi: Poolex fault"
+            message: >-
+              De Poolex rapporteert een probleem (problem-sensor aan).
+              Check de unit / het display — bij d1: te weinig doorstroom,
+              bypass-kraan verder dichtknijpen.
+
+    - id: jacuzzi_poolex_warmtevraag_zonder_compressor
+      alias: "Jacuzzi - Poolex warmtevraag zonder compressor (flow-error?)"
+      triggers:
+        - trigger: template
+          value_template: >-
+            {{ not is_state('climate.pool_heat_pump','off')
+               and states('sensor.pool_heat_pump_compressor_duty_cycle')|float(0) == 0
+               and state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99)
+                   < state_attr('climate.pool_heat_pump','temperature')|float(38) - 1.0 }}
+          for: "00:10:00"      # 10 min warmtevraag zonder compressor = verdacht
+      actions:
+        - action: notify.notify
+          data:
+            title: "Jacuzzi: Poolex mogelijk in storing"
+            message: >-
+              De warmtepomp staat aan en het water is te koud
+              ({{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature') }} °C),
+              maar de compressor draait niet — waarschijnlijk een flow-error.
+              Draait de circulatiepomp? Check de unit.

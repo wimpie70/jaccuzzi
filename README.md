@@ -33,4 +33,6 @@ Geen hardware-relais tussen Poolex en Gecko. Alles loopt via Home Assistant:
 ## Bestanden
 
 - `entities.md` — entity-ID's van beide integraties (invullen zodra alles online is)
-- `automations/` — de HA-automations (YAML)
+- `packages/jacuzzi.yaml` — HA-package met alle automations + helper.
+  Deploy: kopieer naar `/config/packages/` en zet in `configuration.yaml`:
+  `homeassistant: { packages: !include_dir_named packages }`
