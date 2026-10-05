@@ -54,7 +54,7 @@ def _float(state: State | None, default: float = 0.0) -> float:
     """Parse a state's value, with fallback."""
     try:
         return float(state.state)  # type: ignore[union-attr]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
         return default
 
 
@@ -62,7 +62,7 @@ def _attr_float(state: State | None, attr: str, default: float = 99.0) -> float:
     """Parse a state attribute, with fallback."""
     try:
         return float(state.attributes[attr])  # type: ignore[index]
-    except (TypeError, ValueError, KeyError):
+    except (TypeError, ValueError, KeyError, AttributeError):
         return default
 
 
@@ -86,6 +86,7 @@ class JacuzziController:
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._last_gecko_reload = 0.0
+        self._peak_pending = False       # piek-catch-up wacht op entities
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -181,9 +182,9 @@ class JacuzziController:
                 self.hass, self._on_peak_end, hour=hh, minute=mm, second=0
             )
         )
-        # HA-restart midden in het piekvenster -> blokkeer alsnog
-        if self._in_peak_window():
-            await self._on_peak_start(None)
+        # HA-restart midden in het piekvenster -> blokkeer alsnog, maar
+        # pas in _async_evaluate als de bron-entities geladen zijn
+        self._peak_pending = self._in_peak_window()
         await self._async_evaluate()
 
     def _in_peak_window(self) -> bool:
@@ -233,10 +234,14 @@ class JacuzziController:
             )
         else:
             poolex = self._state("poolex_climate")
-            current = _attr_float(poolex, "temperature", 38.0)
-            # niet overschrijven als we midden in de piek (her)starten
-            if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
-                self._peak_saved_setpoint = current
+            if poolex is not None and poolex.state not in (
+                "unavailable",
+                "unknown",
+            ):
+                current = _attr_float(poolex, "temperature", 38.0)
+                # niet overschrijven als we midden in de piek (her)starten
+                if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
+                    self._peak_saved_setpoint = current
             await self._async_call(
                 "climate",
                 "set_temperature",
@@ -316,6 +321,13 @@ class JacuzziController:
             self._maybe_reload_gecko()
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
+
+        # Piekvangst na restart: pas uitvoeren als de entities er zijn;
+        # bij 'unavailable' blijft hij pending en proberen we het volgende
+        # tick opnieuw
+        if self._peak_pending and poolex.state not in ("unavailable", "unknown"):
+            self._peak_pending = False
+            await self._on_peak_start(None)
 
         poolex_off = poolex.state == "off"
         setpoint = _attr_float(poolex, "temperature", 38.0)
