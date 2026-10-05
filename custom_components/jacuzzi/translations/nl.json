@@ -69,6 +69,14 @@
       "poolex_power": {
         "name": "Poolex aan/uit"
       }
+    },
+    "time": {
+      "peak_start": {
+        "name": "Piekblokkade start"
+      },
+      "peak_end": {
+        "name": "Piekblokkade einde"
+      }
     }
   }
 }

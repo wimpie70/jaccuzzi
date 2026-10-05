@@ -27,7 +27,12 @@ ENTITY_WARMTEVRAAG = "binary_sensor.jacuzzi_heat_demand"
 ENTITY_POMP_DOOR_HA = "binary_sensor.jacuzzi_pump_started_by_ha"
 ENTITY_TUB_TEMP = "sensor.jacuzzi_tub_temperature"
 
+# Verhoog bij elke wijziging van DASHBOARD_CONFIG — oudere opgeslagen
+# versies worden dan automatisch overschreven bij de volgende start.
+DASHBOARD_VERSION = 4
+
 DASHBOARD_CONFIG: dict[str, Any] = {
+    "jacuzzi_version": DASHBOARD_VERSION,
     "views": [
         {
             "title": TITLE,
@@ -68,6 +73,14 @@ DASHBOARD_CONFIG: dict[str, Any] = {
                 },
                 {
                     "type": "entities",
+                    "title": "Piekblokkade",
+                    "entities": [
+                        {"entity": "time.jacuzzi_peak_start", "name": "Start"},
+                        {"entity": "time.jacuzzi_peak_end", "name": "Einde"},
+                    ],
+                },
+                {
+                    "type": "entities",
                     "title": "Poolex — sturing",
                     "entities": [
                         {"entity": "select.pool_heat_pump_auxiliary_heating", "name": "Bijstook (C4)"},
@@ -103,7 +116,17 @@ async def async_setup_dashboard(hass: HomeAssistant) -> None:
 
         dashboards = getattr(lovelace, "dashboards", None) or {}
         if URL_PATH in dashboards:
-            _LOGGER.debug("Jacuzzi-dashboard bestaat al — niet overschreven")
+            # Bestaand dashboard: alleen overschrijven als onze versie
+            # nieuwer is (handmatige aanpassingen gaan dan wel verloren)
+            stored = await dashboards[URL_PATH].async_load(False)
+            version = (stored or {}).get("jacuzzi_version", 0)
+            if version >= DASHBOARD_VERSION:
+                _LOGGER.debug("Jacuzzi-dashboard is actueel (v%s)", version)
+                return
+            await dashboards[URL_PATH].async_save(DASHBOARD_CONFIG)
+            _LOGGER.info(
+                "Jacuzzi-dashboard bijgewerkt v%s -> v%s", version, DASHBOARD_VERSION
+            )
             return
 
         collection = getattr(lovelace, "dashboards_collection", None)

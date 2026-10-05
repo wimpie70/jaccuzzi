@@ -69,6 +69,14 @@
       "poolex_power": {
         "name": "Poolex power"
       }
+    },
+    "time": {
+      "peak_start": {
+        "name": "Peak start"
+      },
+      "peak_end": {
+        "name": "Peak end"
+      }
     }
   }
 }
