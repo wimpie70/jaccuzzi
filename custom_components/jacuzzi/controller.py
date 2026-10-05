@@ -273,6 +273,14 @@ class JacuzziController:
             "De warmtepomp is al 15 min niet bereikbaar — stroomstoring of "
             "de test/reset-stekker getrapt? Check de unit.",
         )
+        gecko_gone = jacuzzi is None or jacuzzi.state in ("unavailable", "unknown")
+        self._notify_once(
+            "gecko_unreachable",
+            self._since_true("gecko_unavail", gecko_gone, UNREACHABLE_S),
+            "Jacuzzi: Gecko onbereikbaar",
+            "De jacuzzi-entities zijn al 15 min unavailable — Gecko-cloud "
+            "onbereikbaar of in.touch offline? Check de app.",
+        )
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
 
