@@ -51,6 +51,14 @@ cards:
         name: Buiten
 
   - type: entities
+    title: Piekblokkade
+    entities:
+      - entity: time.jacuzzi_peak_start
+        name: Start
+      - entity: time.jacuzzi_peak_end
+        name: Einde
+
+  - type: entities
     title: Poolex — sturing
     entities:
       - entity: select.pool_heat_pump_auxiliary_heating
