@@ -5,9 +5,11 @@
     - trigger: time
       at: "16:30:00"
   actions:
-    - action: switch.turn_off
+    - action: climate.set_hvac_mode
       target:
-        entity_id: switch.pool_heat_pump_switch
+        entity_id: climate.pool_heat_pump
+      data:
+        hvac_mode: "off"
     # Extra slot op de deur: Watercare beperkt ook de bijstook
     - action: select.select_option
       target:
@@ -20,9 +22,11 @@
     - trigger: time
       at: "20:00:00"
   actions:
-    - action: switch.turn_on
+    - action: climate.set_hvac_mode
       target:
-        entity_id: switch.pool_heat_pump_switch
+        entity_id: climate.pool_heat_pump
+      data:
+        hvac_mode: "heat"
     - action: select.select_option
       target:
         entity_id: select.jaccuzzi_watercare_mode

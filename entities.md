@@ -1,19 +1,28 @@
-# Entity-ID's (status: ingevuld 2026-xx)
+# Entity-ID's (status: 2026-10-05, tuya-local live)
 
-## Tuya — Pool Heat Pump
+## Poolex — via make-all/tuya-local (LOKAAL, protocol 3.5)
+
+Device-config: `poolex_qline_heatpump` (auto-gematcht). De cloud-Tuya-
+integratie is hiermee overbodig — onderstaande IDs komen van tuya-local.
 
 | Rol | Entity-ID | Opmerking |
 |---|---|---|
-| Master switch | `switch.pool_heat_pump_switch` | piekblokkade + mee-trigger pomp |
-| Setpoint (control) | `number.pool_heat_pump_temperature` | 4–40 °C, nu 38 |
-| Watertemperatuur | `sensor.pool_heat_pump_temperature` | 19,6 °C (alleen betrouwbaar mét flow) |
-| Flow temperature | `sensor.pool_heat_pump_flow_temperature` | 20,9 °C |
-| Outside temperature | `sensor.pool_heat_pump_outside_temperature` | 18 °C — voor eigen bijstook-logica |
-| Compressor strength | `sensor.pool_heat_pump_compressor_strength` | 0 = idle; >0 = echt aan het verwarmen |
-| Child lock | `switch.pool_heat_pump_child_lock` | |
-| Defrost (handmatig, schrijfbaar) | — niet gemapt | DP 7 — via tuya-local ontsluitbaar |
-| Defrost state | — niet gemapt | DP 33 — via tuya-local ontsluitbaar |
-| Foutcode | **bestaat niet** | geen fault-DP in het schema |
+| Aan/uit + setpoint | `climate.pool_heat_pump` | hvac_modes off/heat/cool; `temperature` = setpoint, `current_temperature` = inlaat-water |
+| **Fault-indicator** | `binary_sensor.pool_heat_pump_problem` | nieuw! zat niet in het cloud-schema — monitor triggert hierop |
+| Compressor actief | `sensor.pool_heat_pump_compressor_duty_cycle` | >0 = aan het verwarmen (was compressor_strength) |
+| Fan | `sensor.pool_heat_pump_fan_speed` | rpm |
+| Uitgaand water | `sensor.pool_heat_pump_outflow_temperature` | was flow_temperature |
+| Buitentemp | `sensor.pool_heat_pump_temperature_2` | 21,9 °C = ambient |
+| Verdamping/coil | `sensor.pool_heat_pump_coil_temperature` + `return_air_temperature` | |
+| Heetgas | `sensor.pool_heat_pump_vent_temperature` | ≈ DP 24 |
+| EEV's | `sensor.pool_heat_pump_main_eev`, `aux_eev` | pulses |
+| Defrost | `switch.pool_heat_pump_defrost` + `binary_sensor..._defrost` | schrijfbaar + state |
+| C4 bijstook | `select.pool_heat_pump_auxiliary_heating` | off/auto/manual — nu direct instelbaar! |
+| C8 pomp | `select.pool_heat_pump_circulation_pump` | off/auto/manual — laten op off (geen relais) |
+| Dry contact | `select.pool_heat_pump_dry_contact_function` | "In Grid" |
+| C9 interval | `number.pool_heat_pump_sampling_interval` | 60 min |
+| Hysteresis ×4 | `number.pool_heat_pump_..._hysteresis` | heating/cooling stop+restart |
+| Diversen | `lock..._child_lock`, `switch..._power_down_memory`, `binary_sensor..._jet_valve`, `select..._temperature_unit` | |
 
 ### DP-schema (uit diagnostics, product `trtfk7jrlez4hvxu`, cat. znrb)
 Volledige lijst: `1=switch, 3=child_lock, 4=temp_set, 6=temp_unit_convert,
@@ -70,9 +79,9 @@ Sterke vermoedens (waarden passen op fabrieksdefaults):
 NIET de originele rospogrigio/localtuya (geen 3.5 in dropdown, repo
 vrijwel onbeheerd) maar:
 
-- **`xZetsubou/hass-localtuya`** — actieve fork mét 3.5, of
-- **`make-all/tuya-local`** — protocol "auto"/3.5, heeft al een
-  `poolex_qline_heatpump.yaml` device-config
+- ~~`xZetsubou/hass-localtuya`~~ — actieve fork mét 3.5
+- **`make-all/tuya-local`** — GEKOZEN: protocol "auto" detecteerde 3.5,
+  device-config `poolex_qline_heatpump` matchte direct (zie tabel boven)
 
 Geen cloud-API-account/username nodig — device handmatig toevoegen met:
 
