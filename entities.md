@@ -63,6 +63,12 @@ Sterke vermoedens (waarden passen op fabrieksdefaults):
 
 ## Gecko (in.touch 3) — "jaccuzzi"
 
+**Integratie: `geckoal/ha-gecko-integration` (v2.1.1) — CLOUD-only**
+(AWS IoT + OAuth2). Lokaal getest 2026-10-05: unicast `<HELLO>` naar
+192.168.30.110:10022 → geen antwoord; in.touch 3 spreekt het lokale
+geckolib-protocol (in.touch 2) niet. Fallback als cloud te vaak hapert:
+lokaal relais (Shelly) parallel op de pomp-ingang van de pack.
+
 | Rol | Entity-ID | Opmerking |
 |---|---|---|
 | Kuip-temperatuur | `climate.jaccuzzi_thermostat_1` → attr `current_temperature` | **hoofdtrigger pomp-automation** |
