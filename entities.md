@@ -32,13 +32,23 @@ De lokale query toont **33 DPs** — veel meer dan de cloud-schema. Dump
 
 Sterke vermoedens (waarden passen op fabrieksdefaults):
 
-- **DP 104–110 = de C4–C9-parameters**: 104=0 (C4 heater-relais uit — klopt,
-  nog geen relais), 105=500→5.0°C (C5), 106=500→5.0°C (C6), 107=200→2.0°C
-  (C7), 109='0' (C8 pomp-relais uit), 110=60 min (C9). Als dit klopt zijn de
-  parameters **lokaal schrijfbaar** via tuya-local.
-- **Fault-kandidaten** (nu allemaal 0 = gezond): DP **102**, **103** ('0'),
-  **127**. Verifiëren: flow-error provoceren en kijken welke verandert.
-- **DP 23/24** = extra temps (19.2 / 20.0°C — andere sensoren).
+- **Statische parameters** (onveranderd tijdens test): 105=500→5.0°C,
+  106=500→5.0°C, 107=200→2.0°C, 110=60 min — passen op C5/C6/C7/C9.
+  109='0' zou C8 kunnen zijn.
+- **Telemetrie** (live gemeten tijdens compressorrun + d1-fault):
+  - DP 16: inlaat-watertemp (x100)
+  - DP 23: verdampingstemp — zakte naar 5,7°C tijdens run
+  - DP 24: heetgas-/condensortemp — piekte 41,7°C
+  - DP 25: uitgaand water — schoot naar **39°C** bij te weinig flow
+  - DP 104: waarschijnlijk stroom (650 = 6,5A ≈ 1,5 kW)
+  - DP 108: druk of frequentie (730→1660; 16,6 bar zou hoge-druk-fault
+    verklaren)
+  - DP 126: dynamisch (300→480)
+- **Fault-codes zitten NIET in status-DP's** — d1-fault actief terwijl
+  102/103/127 allemaal 0 bleven. App toont ze via historisch fault-logboek
+  (push/alarm-kanaal). Live vangen = `receive()`-listener nodig.
+- **d1 = waarschijnlijk hoge-druk/overhittingsbeveiliging** door te weinig
+  doorstroom (bypass-kraan verder dichtknijpen!).
 - **DP 101/115** = booleans (status/relays?). **117/118** = 3500/3200
   (vermogens/grenzen?).
 
@@ -48,7 +58,7 @@ Sterke vermoedens (waarden passen op fabrieksdefaults):
 |---|---|---|
 | Kuip-temperatuur | `climate.jaccuzzi_thermostat_1` → attr `current_temperature` | **hoofdtrigger pomp-automation** |
 | Setpoint Gecko | `climate.jaccuzzi_thermostat_1` → attr `temperature` | laag zetten (~34–35 °C) |
-| Circulatiepomp | `fan.jaccuzzi_waterfall` (vermoedelijk!) | stond AAN terwijl pump1/2 uit → verifieer |
+| Circulatiepomp | `fan.jaccuzzi_waterfall` | **bevestigd** = circulatiepomp |
 | Massagepompen | `fan.jaccuzzi_pump_1`, `fan.jaccuzzi_pump_2` | |
 | Watercare | `select.jaccuzzi_watercare_mode` | Savings/Standard/... — extra piek-schroef |
 | Status | `binary_sensor.jaccuzzi_spa_status` e.a. | connectivity/running |
