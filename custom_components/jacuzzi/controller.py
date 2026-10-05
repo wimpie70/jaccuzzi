@@ -194,7 +194,7 @@ class JacuzziController:
                 "set_temperature",
                 {
                     "entity_id": self.conf["poolex_climate"],
-                    "temperature": self.conf[CONF_PEAK_SETPOINT],
+                    "temperature": self.conf.get(CONF_PEAK_SETPOINT, 4.0),
                 },
             )
         await self._async_call(
@@ -219,7 +219,7 @@ class JacuzziController:
             restore = (
                 self._peak_saved_setpoint
                 if self._peak_saved_setpoint is not None
-                else self.conf[CONF_NORMAL_SETPOINT]
+                else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
             )
             await self._async_call(
                 "climate",
