@@ -72,6 +72,7 @@ class JacuzziController:
         self.conf = conf
         self.pump_by_us = False          # wij hebben de pomp aangezet
         self.warmtevraag = False          # warmte gevraagd (voor sensor)
+        self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._unsubs = []
@@ -162,6 +163,10 @@ class JacuzziController:
 
     # --- peak block ----------------------------------------------------
 
+    def _watercare_option(self, key: str) -> str:
+        """Normaliseer watercare-optie naar Gecko-enum (SUPER_SAVINGS)."""
+        return str(self.conf[key]).strip().upper().replace(" ", "_")
+
     async def _on_peak_start(self, _now) -> None:
         """Piekblokkade AAN: Poolex uit + Watercare naar piek-mode."""
         _LOGGER.info("Piekblokkade AAN (%s)", self.conf[CONF_PEAK_START])
@@ -175,7 +180,7 @@ class JacuzziController:
             "select_option",
             {
                 "entity_id": self.conf["watercare_select"],
-                "option": self.conf["watercare_peak"],
+                "option": self._watercare_option("watercare_peak"),
             },
         )
 
@@ -192,7 +197,7 @@ class JacuzziController:
             "select_option",
             {
                 "entity_id": self.conf["watercare_select"],
-                "option": self.conf["watercare_normal"],
+                "option": self._watercare_option("watercare_normal"),
             },
         )
 
@@ -214,6 +219,13 @@ class JacuzziController:
         compressor_on = _float(compressor) > 0
         pump_on = pump.state == "on"
         self.warmtevraag = not poolex_off and tub_temp < setpoint - self.conf["temp_margin"]
+
+        # Onthoud dat de compressor echt gedraaid heeft — de nadraai-timer
+        # (comp_idle) mag alleen tellen ná een echte run, anders is
+        # 'compressor al 3 min uit' permanent waar en slaat de pomp direct af.
+        if compressor_on:
+            self._compressor_recently_on = True
+            self._since.pop("comp_idle", None)
 
         # FAILSAFE: compressor draait maar pomp staat uit -> restwarmte
         # kan niet weg -> d1. Pomp direct weer aan.
@@ -241,11 +253,17 @@ class JacuzziController:
             )
             self.pump_by_us = True
 
-        # Pomp UIT: een van de drie herkansingspaden is lang genoeg waar
+        # Pomp UIT: een van de drie herkansingspaden is lang genoeg waar.
+        # comp_idle telt alleen als de compressor echt heeft gedraaid —
+        # nadraaien na een run, geen 'al eeuwen idle'.
         off_due = (
             self._since_true("temp_reached", tub_temp >= setpoint, PUMP_RUNON_S)
             or self._since_true("poolex_off", poolex_off, PUMP_RUNON_S)
-            or self._since_true("comp_idle", not compressor_on, PUMP_RUNON_S)
+            or self._since_true(
+                "comp_idle",
+                not compressor_on and self._compressor_recently_on,
+                PUMP_RUNON_S,
+            )
         )
         if off_due and pump_on and self.pump_by_us and not compressor_on:
             _LOGGER.info("Setpoint bereikt / geen vraag — pomp uit")
@@ -253,6 +271,7 @@ class JacuzziController:
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
             )
             self.pump_by_us = False
+            self._compressor_recently_on = False
 
         # Monitor 1: echte fault-bit van de unit
         problem_active = problem is not None and problem.state == "on"

@@ -7,3 +7,6 @@ snapshot.json
 # Python
 __pycache__/
 *.pyc
+
+# ad-hoc dumps (kan echte creds bevatten)
+temp.json
