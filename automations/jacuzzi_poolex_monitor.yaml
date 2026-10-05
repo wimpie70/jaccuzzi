@@ -1,0 +1,23 @@
+# Monitor: Poolex "wil" verwarmen (aan + water te koud) maar compressor blijft 0
+# → vrijwel zeker een flow-error (of andere fault). De unit rapporteert geen
+# fault-DP via Tuya, dus dit is de proxy-detectie.
+# Stuurt een notificatie; pas 'notify.-service aan naar jouw device.
+
+- alias: "Jacuzzi - Poolex warmtevraag zonder compressor (flow-error?)"
+  triggers:
+    - trigger: template
+      value_template: >-
+        {{ is_state('switch.pool_heat_pump_switch','on')
+           and states('sensor.pool_heat_pump_compressor_strength')|float(0) == 0
+           and state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99)
+               < states('number.pool_heat_pump_temperature')|float(38) - 1.0 }}
+      for: "00:10:00"      # 10 min warmtevraag zonder compressor = verdacht
+  actions:
+    - action: notify.notify
+      data:
+        title: "Jacuzzi: Poolex mogelijk in storing"
+        message: >-
+          De warmtepomp staat aan en het water is te koud
+          ({{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature') }} °C),
+          maar de compressor draait niet — waarschijnlijk een flow-error.
+          Draait de circulatiepomp? Check de unit.

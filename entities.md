@@ -11,11 +11,16 @@
 | Outside temperature | `sensor.pool_heat_pump_outside_temperature` | 18 °C — voor eigen bijstook-logica |
 | Compressor strength | `sensor.pool_heat_pump_compressor_strength` | 0 = idle; >0 = echt aan het verwarmen |
 | Child lock | `switch.pool_heat_pump_child_lock` | |
-| Foutcode | — (nog niet als entity) | zie hieronder |
+| Defrost (handmatig, schrijfbaar) | — niet gemapt | DP 7 — via tuya-local ontsluitbaar |
+| Defrost state | — niet gemapt | DP 33 — via tuya-local ontsluitbaar |
+| Foutcode | **bestaat niet** | geen fault-DP in het schema |
 
-### Fault-DP achterhalen
-- **Download diagnostics** op het device (⋮ → Download diagnostics) → alle DP's zichtbaar, incl. eventueel `fault` (DP 21 bitfield; 16 = P03 waterflow-fout bij vergelijkbare Poolex).
-- Alternatief: **tuya-local** of **ha-silverline** (beide HACS) maken fault-bits beschikbaar als binary_sensors.
+### DP-schema (uit diagnostics, product `trtfk7jrlez4hvxu`, cat. znrb)
+Volledige lijst: `1=switch, 3=child_lock, 4=temp_set, 6=temp_unit_convert,
+7=defrost, 16=temp_current, 20=compressor_strength, 25=temp_effluent,
+26=temp_around, 33=defrost_state`. **Geen fault/foutcode-DP** — foutdetectie
+dus via proxy: `compressor_strength` blijft 0 terwijl warmtevraag bestaat
+(zie `automations/jacuzzi_poolex_monitor.yaml`).
 
 ## Gecko (in.touch 3) — "jaccuzzi"
 
