@@ -30,25 +30,27 @@ Geen hardware-relais tussen Poolex en Gecko. Alles loopt via Home Assistant:
 - [x] ~~Fault-DP?~~ → cloud-schema had er geen, maar tuya-local levert `binary_sensor.pool_heat_pump_problem` + `compressor_duty_cycle` als proxy-fallback.
 - [ ] Zorgt "pomp aan via HA" niet voor conflict met Gecko-filtercycli? (input_boolean-vlag gebruiken)
 
+## Installatie (HACS)
+
+`custom_components/jacuzzi` is een echte integratie — alle
+automation-logica in Python, instelbaar via de UI (entities, piektijden,
+Watercare-modes, notify-service).
+
+1. HACS → ⋯ → **Custom repositories** → `https://github.com/wimpie70/jaccuzzi`,
+   type **Integration**
+2. Installeer "Jacuzzi Poolex Control" en herstart HA
+3. Settings → Devices & Services → Add integration → **Jacuzzi**
+   (de entity-defaults passen direct op deze setup)
+
+Updates gaan daarna via HACS — geen SSH nodig.
+
 ## Bestanden
 
+- `custom_components/jacuzzi/` — de integratie (controller + config flow
+  + status-binary_sensors `Pomp door HA` en `Warmtevraag`)
 - `entities.md` — entity-ID's + volledige DP-tabel (lokaal, protocol 3.5)
-- `packages/jacuzzi.yaml` — HA-package met alle automations + helper.
-  Deploy: `tools/deploy.sh` (scp naar de prod-server) of handmatig
-  kopiëren naar `/config/packages/`; eenmalig in `configuration.yaml`:
-  ```yaml
-  homeassistant:
-    packages: !include_dir_named packages
-  ```
+- `packages/jacuzzi.yaml` — standalone YAML-variant van dezelfde logica
+  (fallback, niet meer nodig als de integratie draait)
 - `tools/query_dps.py` — ruwe DP-dump via tinytuya (credentials in
   gitignored `devices.json`)
-- `tools/deploy.sh` — deploy package naar prod-HA via SSH
-
-## Deploy (prod-HA)
-
-```bash
-HA_SSH=willem@<server> HA_CONFIG=<config-dir> ./tools/deploy.sh
-```
-
-Daarna YAML-reload (Developer tools → Automations + Input booleans) of
-container-restart.
+- `tools/deploy.sh` — deploy package-variant naar prod-HA via SSH

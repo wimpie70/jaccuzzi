@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jacuzzi Poolex Control",
+        "description": "Link the entities and configure the peak block.",
+        "data": {
+          "poolex_climate": "Poolex climate entity",
+          "jacuzzi_climate": "Jacuzzi (Gecko) climate entity",
+          "pump_fan": "Circulation pump (fan entity)",
+          "compressor_sensor": "Compressor duty cycle sensor",
+          "problem_sensor": "Problem/fault binary sensor",
+          "watercare_select": "Watercare mode select",
+          "notify_service": "Notify service (name after 'notify.')",
+          "peak_start": "Peak block start",
+          "peak_end": "Peak block end",
+          "watercare_peak": "Watercare mode during peak",
+          "watercare_normal": "Watercare mode normal",
+          "temp_margin": "Temperature margin (hysteresis)"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Jacuzzi integration is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jacuzzi Poolex Control",
+        "data": {
+          "poolex_climate": "Poolex climate entity",
+          "jacuzzi_climate": "Jacuzzi (Gecko) climate entity",
+          "pump_fan": "Circulation pump (fan entity)",
+          "compressor_sensor": "Compressor duty cycle sensor",
+          "problem_sensor": "Problem/fault binary sensor",
+          "watercare_select": "Watercare mode select",
+          "notify_service": "Notify service (name after 'notify.')",
+          "peak_start": "Peak block start",
+          "peak_end": "Peak block end",
+          "watercare_peak": "Watercare mode during peak",
+          "watercare_normal": "Watercare mode normal",
+          "temp_margin": "Temperature margin (hysteresis)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "pomp_door_ha": { "name": "Pump started by HA" },
+      "warmtevraag": { "name": "Heat demand" }
+    }
+  }
+}

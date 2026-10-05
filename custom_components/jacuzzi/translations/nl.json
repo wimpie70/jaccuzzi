@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jacuzzi Poolex Control",
+        "description": "Koppel de entities en stel de piekblokkade in.",
+        "data": {
+          "poolex_climate": "Poolex climate entity",
+          "jacuzzi_climate": "Jacuzzi (Gecko) climate entity",
+          "pump_fan": "Circulatiepomp (fan entity)",
+          "compressor_sensor": "Compressor duty cycle sensor",
+          "problem_sensor": "Problem/fault binary sensor",
+          "watercare_select": "Watercare mode select",
+          "notify_service": "Notify-service (naam na 'notify.')",
+          "peak_start": "Piekblokkade start",
+          "peak_end": "Piekblokkade einde",
+          "watercare_peak": "Watercare mode tijdens piek",
+          "watercare_normal": "Watercare mode normaal",
+          "temp_margin": "Temperatuurmarge (hysterese)"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Er kan maar één Jacuzzi-integratie zijn."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jacuzzi Poolex Control",
+        "data": {
+          "poolex_climate": "Poolex climate entity",
+          "jacuzzi_climate": "Jacuzzi (Gecko) climate entity",
+          "pump_fan": "Circulatiepomp (fan entity)",
+          "compressor_sensor": "Compressor duty cycle sensor",
+          "problem_sensor": "Problem/fault binary sensor",
+          "watercare_select": "Watercare mode select",
+          "notify_service": "Notify-service (naam na 'notify.')",
+          "peak_start": "Piekblokkade start",
+          "peak_end": "Piekblokkade einde",
+          "watercare_peak": "Watercare mode tijdens piek",
+          "watercare_normal": "Watercare mode normaal",
+          "temp_margin": "Temperatuurmarge (hysterese)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "pomp_door_ha": { "name": "Pomp door HA" },
+      "warmtevraag": { "name": "Warmtevraag" }
+    }
+  }
+}
