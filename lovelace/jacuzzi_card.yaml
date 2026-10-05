@@ -20,9 +20,9 @@ cards:
   - type: glance
     title: Regelstatus
     entities:
-      - entity: binary_sensor.jacuzzi_warmtevraag
+      - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag
-      - entity: binary_sensor.jacuzzi_pomp_door_ha
+      - entity: binary_sensor.jacuzzi_pump_started_by_ha
         name: Pomp door HA
       - entity: fan.jaccuzzi_waterfall
         name: Circulatie
@@ -35,6 +35,8 @@ cards:
     title: Temperaturen (6 uur)
     hours_to_show: 6
     entities:
+      - entity: sensor.jacuzzi_tub_temperature
+        name: Kuip
       - entity: sensor.pool_heat_pump_temperature
         name: Wisselaar inlaat
       - entity: sensor.pool_heat_pump_outflow_temperature

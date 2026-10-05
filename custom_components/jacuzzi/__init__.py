@@ -6,8 +6,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .controller import JacuzziController
+from .dashboard import async_setup_dashboard
 
-PLATFORMS = ["binary_sensor"]
+PLATFORMS = ["binary_sensor", "sensor"]
 
 type JacuzziConfigEntry = ConfigEntry[JacuzziController]
 
@@ -20,6 +21,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> b
     entry.runtime_data = controller
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_setup_dashboard(hass)
     return True
 
 

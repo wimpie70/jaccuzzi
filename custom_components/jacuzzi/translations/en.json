@@ -49,6 +49,9 @@
     "binary_sensor": {
       "pomp_door_ha": { "name": "Pump started by HA" },
       "warmtevraag": { "name": "Heat demand" }
+    },
+    "sensor": {
+      "tub_temperature": { "name": "Tub temperature" }
     }
   }
 }

@@ -49,6 +49,9 @@
     "binary_sensor": {
       "pomp_door_ha": { "name": "Pomp door HA" },
       "warmtevraag": { "name": "Warmtevraag" }
+    },
+    "sensor": {
+      "tub_temperature": { "name": "Kuip-temperatuur" }
     }
   }
 }
