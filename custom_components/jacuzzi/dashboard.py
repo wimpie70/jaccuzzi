@@ -29,7 +29,7 @@ ENTITY_TUB_TEMP = "sensor.jacuzzi_tub_temperature"
 
 # Verhoog bij elke wijziging van DASHBOARD_CONFIG — oudere opgeslagen
 # versies worden dan automatisch overschreven bij de volgende start.
-DASHBOARD_VERSION = 4
+DASHBOARD_VERSION = 5
 
 DASHBOARD_CONFIG: dict[str, Any] = {
     "jacuzzi_version": DASHBOARD_VERSION,
@@ -47,15 +47,29 @@ DASHBOARD_CONFIG: dict[str, Any] = {
                     ],
                 },
                 {
-                    "type": "glance",
-                    "title": "Regelstatus",
-                    "entities": [
-                        {"entity": "switch.jacuzzi_poolex_power", "name": "Poolex"},
-                        {"entity": ENTITY_WARMTEVRAAG, "name": "Warmtevraag"},
-                        {"entity": ENTITY_POMP_DOOR_HA, "name": "Pomp door HA"},
-                        {"entity": ENTITY_POMP, "name": "Circulatie"},
-                        {"entity": ENTITY_COMPRESSOR, "name": "Compressor"},
-                        {"entity": ENTITY_PROBLEM, "name": "Fault"},
+                    "type": "horizontal-stack",
+                    "cards": [
+                        {
+                            "type": "glance",
+                            "title": "Gecko — circulatie",
+                            "entities": [
+                                {"entity": ENTITY_POMP, "name": "Circulatie"},
+                                {"entity": ENTITY_POMP_DOOR_HA, "name": "Pomp door HA"},
+                            ],
+                        },
+                        {
+                            "type": "glance",
+                            "title": "Poolex — warmtepomp",
+                            "entities": [
+                                {
+                                    "entity": "switch.jacuzzi_poolex_power",
+                                    "name": "Aan/uit",
+                                },
+                                {"entity": ENTITY_WARMTEVRAAG, "name": "Warmtevraag"},
+                                {"entity": ENTITY_COMPRESSOR, "name": "Compressor"},
+                                {"entity": ENTITY_PROBLEM, "name": "Fault"},
+                            ],
+                        },
                     ],
                 },
                 {
