@@ -38,6 +38,7 @@ from .const import (
     PEAK_MODE_OFF,
     PROBLEM_DELAY_S,
     PUMP_RUNON_S,
+    UNREACHABLE_S,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -150,7 +151,21 @@ class JacuzziController:
                 self.hass, self._on_peak_end, hour=hh, minute=mm, second=0
             )
         )
+        # HA-restart midden in het piekvenster -> blokkeer alsnog
+        if self._in_peak_window():
+            await self._on_peak_start(None)
         await self._async_evaluate()
+
+    def _in_peak_window(self) -> bool:
+        """Nu binnen het piekvenster? (handelt over-middernacht af)."""
+        now = dt_util.now().time()
+        s_h, s_m = _parse_hhmm(self.conf[CONF_PEAK_START])
+        e_h, e_m = _parse_hhmm(self.conf[CONF_PEAK_END])
+        start = now.replace(hour=s_h, minute=s_m, second=0)
+        end = now.replace(hour=e_h, minute=e_m, second=0)
+        if start <= end:
+            return start <= now < end
+        return now >= start or now < end
 
     def async_stop(self) -> None:
         """Detach listeners."""
@@ -188,7 +203,10 @@ class JacuzziController:
             )
         else:
             poolex = self._state("poolex_climate")
-            self._peak_saved_setpoint = _attr_float(poolex, "temperature", 38.0)
+            current = _attr_float(poolex, "temperature", 38.0)
+            # niet overschrijven als we midden in de piek (her)starten
+            if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
+                self._peak_saved_setpoint = current
             await self._async_call(
                 "climate",
                 "set_temperature",
@@ -245,6 +263,16 @@ class JacuzziController:
         pump = self._state("pump_fan")
         compressor = self._state("compressor_sensor")
         problem = self._state("problem_sensor")
+        # Monitor 0: Poolex onbereikbaar — stroomstoring of de
+        # PRCD-stekker heeft getrapt (unit fysiek spanningsloos).
+        poolex_gone = poolex is None or poolex.state in ("unavailable", "unknown")
+        self._notify_once(
+            "poolex_unreachable",
+            self._since_true("poolex_unavail", poolex_gone, UNREACHABLE_S),
+            "Jacuzzi: Poolex onbereikbaar",
+            "De warmtepomp is al 15 min niet bereikbaar — stroomstoring of "
+            "de test/reset-stekker getrapt? Check de unit.",
+        )
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
 

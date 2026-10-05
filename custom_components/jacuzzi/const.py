@@ -42,3 +42,4 @@ FAILSAFE_DELAY_S = 15    # compressor aan + pomp uit -> pomp aan
 PROBLEM_DELAY_S = 60     # fault-bit aan voordat we melden
 NO_COMPRESSOR_S = 600    # warmtevraag zonder compressor -> verdacht
 EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
+UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)
