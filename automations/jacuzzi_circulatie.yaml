@@ -1,0 +1,58 @@
+# Circulatiepomp-aansturing o.b.v. Gecko-watertemperatuur vs Poolex-setpoint.
+# input_boolean.jacuzzi_pomp_door_ha voorkomt dat we een door de Gecko
+# gestarte filtercyclus per ongeluk uitschakelen.
+# VUL ENTITY-ID's IN uit entities.md
+#
+# Benodigde entity's:
+#   sensor.GECKO_WATERTEMP      - echte kuip-temperatuur (Gecko)
+#   number.POOLEX_SETPOINT      - Poolex streeftemperatuur (control)
+#   switch.POOLEX_SWITCH        - Poolex master aan/uit (Tuya)
+#   switch.CIRC_POMP            - circulatiepomp (Gecko-integratie)
+
+- alias: "Jacuzzi - circulatiepomp AAN bij warmtevraag"
+  triggers:
+    - trigger: template
+      value_template: >-
+        {{ states('sensor.GECKO_WATERTEMP')|float(99) <
+           states('number.POOLEX_SETPOINT')|float(38) - 1.0 }}
+    - trigger: state
+      entity_id: switch.POOLEX_SWITCH
+      to: "on"
+  conditions:
+    - condition: state
+      entity_id: switch.POOLEX_SWITCH
+      state: "on"
+    - condition: template
+      value_template: >-
+        {{ states('sensor.GECKO_WATERTEMP')|float(99) <
+           states('number.POOLEX_SETPOINT')|float(38) - 1.0 }}
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.CIRC_POMP
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.jacuzzi_pomp_door_ha
+
+- alias: "Jacuzzi - circulatiepomp UIT bij setpoint bereikt"
+  triggers:
+    - trigger: template
+      value_template: >-
+        {{ states('sensor.GECKO_WATERTEMP')|float(99) >=
+           states('number.POOLEX_SETPOINT')|float(38) }}
+      for: "00:03:00"      # nadraaitijd
+    - trigger: state
+      entity_id: switch.POOLEX_SWITCH
+      to: "off"
+      for: "00:03:00"
+  conditions:
+    - condition: state
+      entity_id: input_boolean.jacuzzi_pomp_door_ha
+      state: "on"          # alleen uit als WIJ hem hebben aangezet
+  actions:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.CIRC_POMP
+    - action: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.jacuzzi_pomp_door_ha

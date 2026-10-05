@@ -1,0 +1,20 @@
+# Kookpiek-blokkade: Poolex uit tijdens 16:30-20:00
+# VUL ENTITY-ID's IN uit entities.md
+
+- alias: "Jacuzzi - piekblokkade AAN (16:30)"
+  triggers:
+    - trigger: time
+      at: "16:30:00"
+  actions:
+    - action: switch.turn_off
+      target:
+        entity_id: switch.pool_heat_pump_TODO   # Tuya master switch
+
+- alias: "Jacuzzi - piekblokkade UIT (20:00)"
+  triggers:
+    - trigger: time
+      at: "20:00:00"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.pool_heat_pump_TODO
