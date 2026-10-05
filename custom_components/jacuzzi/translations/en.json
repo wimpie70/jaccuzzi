@@ -16,7 +16,10 @@
           "peak_end": "Peak block end",
           "watercare_peak": "Watercare mode during peak",
           "watercare_normal": "Watercare mode normal",
-          "temp_margin": "Temperature margin (hysteresis)"
+          "temp_margin": "Temperature margin (hysteresis)",
+          "peak_mode": "Peak block method",
+          "peak_setpoint": "Setpoint during peak",
+          "normal_setpoint": "Setpoint after peak (fallback)"
         }
       }
     },
@@ -40,18 +43,32 @@
           "peak_end": "Peak block end",
           "watercare_peak": "Watercare mode during peak",
           "watercare_normal": "Watercare mode normal",
-          "temp_margin": "Temperature margin (hysteresis)"
+          "temp_margin": "Temperature margin (hysteresis)",
+          "peak_mode": "Peak block method",
+          "peak_setpoint": "Setpoint during peak",
+          "normal_setpoint": "Setpoint after peak (fallback)"
         }
       }
     }
   },
   "entity": {
     "binary_sensor": {
-      "pomp_door_ha": { "name": "Pump started by HA" },
-      "warmtevraag": { "name": "Heat demand" }
+      "pomp_door_ha": {
+        "name": "Pump started by HA"
+      },
+      "warmtevraag": {
+        "name": "Heat demand"
+      }
     },
     "sensor": {
-      "tub_temperature": { "name": "Tub temperature" }
+      "tub_temperature": {
+        "name": "Tub temperature"
+      }
+    },
+    "switch": {
+      "poolex_power": {
+        "name": "Poolex power"
+      }
     }
   }
 }

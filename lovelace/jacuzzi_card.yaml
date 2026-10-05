@@ -20,6 +20,8 @@ cards:
   - type: glance
     title: Regelstatus
     entities:
+      - entity: switch.jacuzzi_poolex_power
+        name: Poolex
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag
       - entity: binary_sensor.jacuzzi_pump_started_by_ha

@@ -26,12 +26,16 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_NORMAL_SETPOINT,
     CONF_NOTIFY_SERVICE,
     CONF_PEAK_END,
+    CONF_PEAK_MODE,
+    CONF_PEAK_SETPOINT,
     CONF_PEAK_START,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
     NO_COMPRESSOR_S,
+    PEAK_MODE_OFF,
     PROBLEM_DELAY_S,
     PUMP_RUNON_S,
 )
@@ -73,6 +77,7 @@ class JacuzziController:
         self.pump_by_us = False          # wij hebben de pomp aangezet
         self.warmtevraag = False          # warmte gevraagd (voor sensor)
         self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
+        self._peak_saved_setpoint: float | None = None  # setpoint vóór de piek
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._unsubs = []
@@ -168,13 +173,30 @@ class JacuzziController:
         return str(self.conf[key]).strip().upper().replace(" ", "_")
 
     async def _on_peak_start(self, _now) -> None:
-        """Piekblokkade AAN: Poolex uit + Watercare naar piek-mode."""
+        """Piekblokkade AAN: Poolex dicht + Watercare naar piek-mode.
+
+        'setpoint'-mode (default): setpoint naar het dieptepunt — de unit
+        blijft aan (telemetrie + vorstbeveiliging blijven werken) maar
+        de compressor krijgt nooit vraag. 'off'-mode: hvac_mode uit.
+        """
         _LOGGER.info("Piekblokkade AAN (%s)", self.conf[CONF_PEAK_START])
-        await self._async_call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": self.conf["poolex_climate"], "hvac_mode": "off"},
-        )
+        if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
+            await self._async_call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": self.conf["poolex_climate"], "hvac_mode": "off"},
+            )
+        else:
+            poolex = self._state("poolex_climate")
+            self._peak_saved_setpoint = _attr_float(poolex, "temperature", 38.0)
+            await self._async_call(
+                "climate",
+                "set_temperature",
+                {
+                    "entity_id": self.conf["poolex_climate"],
+                    "temperature": self.conf[CONF_PEAK_SETPOINT],
+                },
+            )
         await self._async_call(
             "select",
             "select_option",
@@ -185,13 +207,26 @@ class JacuzziController:
         )
 
     async def _on_peak_end(self, _now) -> None:
-        """Piekblokkade UIT: Poolex weer op heat + Watercare normaal."""
+        """Piekblokkade UIT: setpoint/mode herstellen + Watercare normaal."""
         _LOGGER.info("Piekblokkade UIT (%s)", self.conf[CONF_PEAK_END])
-        await self._async_call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
-        )
+        if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
+            await self._async_call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
+            )
+        else:
+            restore = (
+                self._peak_saved_setpoint
+                if self._peak_saved_setpoint is not None
+                else self.conf[CONF_NORMAL_SETPOINT]
+            )
+            await self._async_call(
+                "climate",
+                "set_temperature",
+                {"entity_id": self.conf["poolex_climate"], "temperature": restore},
+            )
+            self._peak_saved_setpoint = None
         await self._async_call(
             "select",
             "select_option",

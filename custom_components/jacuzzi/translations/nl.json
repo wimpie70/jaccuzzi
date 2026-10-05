@@ -16,7 +16,10 @@
           "peak_end": "Piekblokkade einde",
           "watercare_peak": "Watercare mode tijdens piek",
           "watercare_normal": "Watercare mode normaal",
-          "temp_margin": "Temperatuurmarge (hysterese)"
+          "temp_margin": "Temperatuurmarge (hysterese)",
+          "peak_mode": "Piekblokkade methode",
+          "peak_setpoint": "Setpoint tijdens piek",
+          "normal_setpoint": "Setpoint na piek (fallback)"
         }
       }
     },
@@ -40,18 +43,32 @@
           "peak_end": "Piekblokkade einde",
           "watercare_peak": "Watercare mode tijdens piek",
           "watercare_normal": "Watercare mode normaal",
-          "temp_margin": "Temperatuurmarge (hysterese)"
+          "temp_margin": "Temperatuurmarge (hysterese)",
+          "peak_mode": "Piekblokkade methode",
+          "peak_setpoint": "Setpoint tijdens piek",
+          "normal_setpoint": "Setpoint na piek (fallback)"
         }
       }
     }
   },
   "entity": {
     "binary_sensor": {
-      "pomp_door_ha": { "name": "Pomp door HA" },
-      "warmtevraag": { "name": "Warmtevraag" }
+      "pomp_door_ha": {
+        "name": "Pomp door HA"
+      },
+      "warmtevraag": {
+        "name": "Warmtevraag"
+      }
     },
     "sensor": {
-      "tub_temperature": { "name": "Kuip-temperatuur" }
+      "tub_temperature": {
+        "name": "Kuip-temperatuur"
+      }
+    },
+    "switch": {
+      "poolex_power": {
+        "name": "Poolex aan/uit"
+      }
     }
   }
 }

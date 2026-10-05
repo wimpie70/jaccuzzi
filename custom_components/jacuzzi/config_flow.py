@@ -17,13 +17,19 @@ from .const import (
     CONF_POOLEX_CLIMATE,
     CONF_PROBLEM_SENSOR,
     CONF_PUMP_FAN,
+    CONF_NORMAL_SETPOINT,
+    CONF_PEAK_MODE,
+    CONF_PEAK_SETPOINT,
     CONF_TEMP_MARGIN,
     CONF_WATERCARE_NORMAL,
     CONF_WATERCARE_PEAK,
     CONF_WATERCARE_SELECT,
     DEFAULT_COMPRESSOR_SENSOR,
     DEFAULT_JACUZZI_CLIMATE,
+    DEFAULT_NORMAL_SETPOINT,
     DEFAULT_NOTIFY_SERVICE,
+    DEFAULT_PEAK_MODE,
+    DEFAULT_PEAK_SETPOINT,
     DEFAULT_PEAK_END,
     DEFAULT_PEAK_START,
     DEFAULT_POOLEX_CLIMATE,
@@ -58,6 +64,9 @@ DEFAULTS = {
     CONF_WATERCARE_PEAK: DEFAULT_WATERCARE_PEAK,
     CONF_WATERCARE_NORMAL: DEFAULT_WATERCARE_NORMAL,
     CONF_TEMP_MARGIN: DEFAULT_TEMP_MARGIN,
+    CONF_PEAK_MODE: DEFAULT_PEAK_MODE,
+    CONF_PEAK_SETPOINT: DEFAULT_PEAK_SETPOINT,
+    CONF_NORMAL_SETPOINT: DEFAULT_NORMAL_SETPOINT,
 }
 
 
@@ -88,6 +97,27 @@ def _schema(current: dict | None = None) -> vol.Schema:
         CONF_TEMP_MARGIN, default=current.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN)
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=0.1, max=5.0, step=0.1, unit_of_measurement="°C")
+    )
+    data[vol.Required(
+        CONF_PEAK_MODE, default=current.get(CONF_PEAK_MODE, DEFAULT_PEAK_MODE)
+    )] = selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[
+                selector.SelectOptionDict(value="setpoint", label="Laag setpoint (blijft aan)"),
+                selector.SelectOptionDict(value="off", label="Helemaal uit (hvac_mode off)"),
+            ],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+    data[vol.Required(
+        CONF_PEAK_SETPOINT, default=current.get(CONF_PEAK_SETPOINT, DEFAULT_PEAK_SETPOINT)
+    )] = selector.NumberSelector(
+        selector.NumberSelectorConfig(min=4.0, max=20.0, step=0.5, unit_of_measurement="°C")
+    )
+    data[vol.Required(
+        CONF_NORMAL_SETPOINT, default=current.get(CONF_NORMAL_SETPOINT, DEFAULT_NORMAL_SETPOINT)
+    )] = selector.NumberSelector(
+        selector.NumberSelectorConfig(min=20.0, max=42.0, step=0.5, unit_of_measurement="°C")
     )
     return vol.Schema(data)
 

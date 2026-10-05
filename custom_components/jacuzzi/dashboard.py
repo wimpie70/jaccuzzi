@@ -45,6 +45,7 @@ DASHBOARD_CONFIG: dict[str, Any] = {
                     "type": "glance",
                     "title": "Regelstatus",
                     "entities": [
+                        {"entity": "switch.jacuzzi_poolex_power", "name": "Poolex"},
                         {"entity": ENTITY_WARMTEVRAAG, "name": "Warmtevraag"},
                         {"entity": ENTITY_POMP_DOOR_HA, "name": "Pomp door HA"},
                         {"entity": ENTITY_POMP, "name": "Circulatie"},

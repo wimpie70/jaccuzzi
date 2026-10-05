@@ -14,6 +14,9 @@ CONF_PEAK_END = "peak_end"
 CONF_WATERCARE_PEAK = "watercare_peak"
 CONF_WATERCARE_NORMAL = "watercare_normal"
 CONF_TEMP_MARGIN = "temp_margin"
+CONF_PEAK_MODE = "peak_mode"
+CONF_PEAK_SETPOINT = "peak_setpoint"
+CONF_NORMAL_SETPOINT = "normal_setpoint"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"
@@ -27,6 +30,11 @@ DEFAULT_PEAK_END = "20:00"
 DEFAULT_WATERCARE_PEAK = "SUPER_SAVINGS"
 DEFAULT_WATERCARE_NORMAL = "SAVINGS"
 DEFAULT_TEMP_MARGIN = 1.0
+PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan
+PEAK_MODE_OFF = "off"             # piek = hvac_mode off
+DEFAULT_PEAK_MODE = PEAK_MODE_SETPOINT
+DEFAULT_PEAK_SETPOINT = 4.0       # °C — laagste setpoint, unit idle
+DEFAULT_NORMAL_SETPOINT = 38.0    # °C — fallback als geen opgeslagen setpoint
 
 # Timers (seconds)
 PUMP_RUNON_S = 180       # nadraaitijd pomp
