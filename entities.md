@@ -63,6 +63,42 @@ Sterke vermoedens (waarden passen op fabrieksdefaults):
 | Watercare | `select.jaccuzzi_watercare_mode` | Savings/Standard/... — extra piek-schroef |
 | Status | `binary_sensor.jaccuzzi_spa_status` e.a. | connectivity/running |
 
+## Lokaal via localtuya (geen cloud)
+
+HACS-integratie **localtuya** (rospogriggin). Voeg device toe met:
+
+- Device ID: `bf20da734a1d2c4846onfr`
+- Local key: uit `devices.json` (gitignored)
+- IP: `192.168.30.111` — **vast maken met DHCP-reservering in de router**
+- Protocol: **3.5**
+
+Let op: Tuya laat maar **één** lokale verbinding toe. Smart Life-app
+dicht tijdens gebruik van localtuya (app werkt dan via cloud, dat mag
+wel). De `tools/query_dps.py`-queries zijn kort — geen probleem.
+
+### Entities aanmaken (DP-mapping voor de config flow)
+
+| Platform | Naam | DP | Instellingen |
+|---|---|---|---|
+| switch | Pool Heat Pump | 1 | |
+| number | Poolex setpoint | 4 | min 4, max 40, step 1, scaling 0.01 |
+| sensor | Water temp (inlaat) | 16 | °C, scaling 0.01 |
+| sensor | Flow temp (uitgaand) | 25 | °C, scaling 0.01 |
+| sensor | Outside temp | 26 | °C, scaling 0.01 |
+| sensor | Compressor strength | 20 | 0–1500, geen scaling |
+| switch | Defrost (handmatig) | 7 | |
+| binary_sensor | Defrost state | 33 | |
+| sensor | Verdampingstemp | 23 | °C, scaling 0.01 |
+| sensor | Heetgas/condensortemp | 24 | °C, scaling 0.01 |
+| sensor | Stroom | 104 | A, scaling 0.1 (650→6,5A) |
+| sensor | Druk/frequentie | 108 | onbekend — eerst ruw loggen |
+
+Daarna: hernoem de lokale entities naar dezelfde IDs als de
+cloud-entities (`switch.pool_heat_pump_switch` e.d.) zodat de
+automations ongewijzigd blijven werken, en verwijder daarna pas de
+Tuya-cloud-integratie. Test eerst of `switch` en `number` lokaal
+schrijven werken.
+
 ## Helpers (aanmaken in HA)
 
 | Rol | Naam | Type |
