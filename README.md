@@ -3,7 +3,7 @@
 Home Assistant-aansturing van de jacuzzi-verwarming:
 
 - **Jacuzzi:** Riptide RSP 230-1 met **Gecko in.ye-3** pack + **in.touch 3** (via Gecko-integratie in HA)
-- **Warmtepomp:** **Poolex Spawer IceSpa 7** (via Tuya/Smart Life-integratie in HA)
+- **Warmtepomp:** **Poolex Spawer IceSpa 7** (via **tuya-local**, protocol 3.5 — geen cloud)
 
 ## Architectuur (relay-less)
 
@@ -27,12 +27,28 @@ Geen hardware-relais tussen Poolex en Gecko. Alles loopt via Home Assistant:
 
 - [x] `fan.jaccuzzi_waterfall` = circulatiepomp — **bevestigd**
 - [x] Herstelt de Poolex **zelf** uit een flow-error zodra de pomp weer draait? → **Ja** (d1 ruimde zichzelf op zodra flow herstelde; compressor startte opnieuw)
-- [x] ~~Fault-DP?~~ → **bestaat niet** in dit product-schema. Proxy-detectie via `compressor_strength` (`jacuzzi_poolex_monitor.yaml`). Optioneel: `defrost`/`defrost_state` via tuya-local.
+- [x] ~~Fault-DP?~~ → cloud-schema had er geen, maar tuya-local levert `binary_sensor.pool_heat_pump_problem` + `compressor_duty_cycle` als proxy-fallback.
 - [ ] Zorgt "pomp aan via HA" niet voor conflict met Gecko-filtercycli? (input_boolean-vlag gebruiken)
 
 ## Bestanden
 
-- `entities.md` — entity-ID's van beide integraties (invullen zodra alles online is)
+- `entities.md` — entity-ID's + volledige DP-tabel (lokaal, protocol 3.5)
 - `packages/jacuzzi.yaml` — HA-package met alle automations + helper.
-  Deploy: kopieer naar `/config/packages/` en zet in `configuration.yaml`:
-  `homeassistant: { packages: !include_dir_named packages }`
+  Deploy: `tools/deploy.sh` (scp naar de prod-server) of handmatig
+  kopiëren naar `/config/packages/`; eenmalig in `configuration.yaml`:
+  ```yaml
+  homeassistant:
+    packages: !include_dir_named packages
+  ```
+- `tools/query_dps.py` — ruwe DP-dump via tinytuya (credentials in
+  gitignored `devices.json`)
+- `tools/deploy.sh` — deploy package naar prod-HA via SSH
+
+## Deploy (prod-HA)
+
+```bash
+HA_SSH=willem@<server> HA_CONFIG=<config-dir> ./tools/deploy.sh
+```
+
+Daarna YAML-reload (Developer tools → Automations + Input booleans) of
+container-restart.
