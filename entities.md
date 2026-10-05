@@ -22,6 +22,26 @@ Volledige lijst: `1=switch, 3=child_lock, 4=temp_set, 6=temp_unit_convert,
 dus via proxy: `compressor_strength` blijft 0 terwijl warmtevraag bestaat
 (zie `automations/jacuzzi_poolex_monitor.yaml`).
 
+## Lokale DPs (tinytuya, protocol 3.5 — `tools/query_dps.py`)
+
+De lokale query toont **33 DPs** — veel meer dan de cloud-schema. Dump
+(gemeten, unit uit): `1=F,2='4',3=T,4=3800,6='c',7=F,16=2050,20=0,23=1920,
+24=2000,25=2120,26=2070,33=F,101=T,102=0,103='0',104=0,105=500,106=500,
+107=200,108=2000,109='0',110=60,111-114=200,115=T,117=3500,118=3200,
+126=350,127=0,128=F`.
+
+Sterke vermoedens (waarden passen op fabrieksdefaults):
+
+- **DP 104–110 = de C4–C9-parameters**: 104=0 (C4 heater-relais uit — klopt,
+  nog geen relais), 105=500→5.0°C (C5), 106=500→5.0°C (C6), 107=200→2.0°C
+  (C7), 109='0' (C8 pomp-relais uit), 110=60 min (C9). Als dit klopt zijn de
+  parameters **lokaal schrijfbaar** via tuya-local.
+- **Fault-kandidaten** (nu allemaal 0 = gezond): DP **102**, **103** ('0'),
+  **127**. Verifiëren: flow-error provoceren en kijken welke verandert.
+- **DP 23/24** = extra temps (19.2 / 20.0°C — andere sensoren).
+- **DP 101/115** = booleans (status/relays?). **117/118** = 3500/3200
+  (vermogens/grenzen?).
+
 ## Gecko (in.touch 3) — "jaccuzzi"
 
 | Rol | Entity-ID | Opmerking |
