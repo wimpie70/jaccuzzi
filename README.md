@@ -25,8 +25,9 @@ Geen hardware-relais tussen Poolex en Gecko. Alles loopt via Home Assistant:
 
 ### Testpunten
 
+- [ ] `fan.jaccuzzi_waterfall` = circulatiepomp? (verifieer — stond aan terwijl pump1/2 uit waren)
 - [ ] Herstelt de Poolex **zelf** uit een flow-error zodra de pomp weer draait, of blijft de error hangen?
-- [ ] Rapporteert de Poolex een foutcode/status in HA als er geen flow is?
+- [ ] Fault-DP zichtbaar via **Download diagnostics** op het Tuya-device? (DP 21 = bitfield; 16 = waterflow-fout). Indien niet: tuya-local / ha-silverline proberen.
 - [ ] Zorgt "pomp aan via HA" niet voor conflict met Gecko-filtercycli? (input_boolean-vlag gebruiken)
 
 ## Bestanden

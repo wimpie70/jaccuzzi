@@ -1,5 +1,4 @@
 # Kookpiek-blokkade: Poolex uit tijdens 16:30-20:00
-# VUL ENTITY-ID's IN uit entities.md
 
 - alias: "Jacuzzi - piekblokkade AAN (16:30)"
   triggers:
@@ -8,7 +7,13 @@
   actions:
     - action: switch.turn_off
       target:
-        entity_id: switch.pool_heat_pump_TODO   # Tuya master switch
+        entity_id: switch.pool_heat_pump_switch
+    # Extra slot op de deur: Watercare beperkt ook de bijstook
+    - action: select.select_option
+      target:
+        entity_id: select.jaccuzzi_watercare_mode
+      data:
+        option: "Super Savings"
 
 - alias: "Jacuzzi - piekblokkade UIT (20:00)"
   triggers:
@@ -17,4 +22,9 @@
   actions:
     - action: switch.turn_on
       target:
-        entity_id: switch.pool_heat_pump_TODO
+        entity_id: switch.pool_heat_pump_switch
+    - action: select.select_option
+      target:
+        entity_id: select.jaccuzzi_watercare_mode
+      data:
+        option: "Savings"

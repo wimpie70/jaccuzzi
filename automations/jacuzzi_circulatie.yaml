@@ -1,35 +1,29 @@
-# Circulatiepomp-aansturing o.b.v. Gecko-watertemperatuur vs Poolex-setpoint.
-# input_boolean.jacuzzi_pomp_door_ha voorkomt dat we een door de Gecko
-# gestarte filtercyclus per ongeluk uitschakelen.
-# VUL ENTITY-ID's IN uit entities.md
+# Circulatiepomp-aansturing o.b.v. echte kuip-temperatuur (Gecko climate-attr)
+# vs Poolex-setpoint. input_boolean voorkomt conflict met Gecko-filtercycli.
 #
-# Benodigde entity's:
-#   sensor.GECKO_WATERTEMP      - echte kuip-temperatuur (Gecko)
-#   number.POOLEX_SETPOINT      - Poolex streeftemperatuur (control)
-#   switch.POOLEX_SWITCH        - Poolex master aan/uit (Tuya)
-#   switch.CIRC_POMP            - circulatiepomp (Gecko-integratie)
+# LET OP: fan.jaccuzzi_waterfall = vermoedelijk de circulatiepomp — verifieer!
 
 - alias: "Jacuzzi - circulatiepomp AAN bij warmtevraag"
   triggers:
     - trigger: template
       value_template: >-
-        {{ states('sensor.GECKO_WATERTEMP')|float(99) <
-           states('number.POOLEX_SETPOINT')|float(38) - 1.0 }}
+        {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) <
+           states('number.pool_heat_pump_temperature')|float(38) - 1.0 }}
     - trigger: state
-      entity_id: switch.POOLEX_SWITCH
+      entity_id: switch.pool_heat_pump_switch
       to: "on"
   conditions:
     - condition: state
-      entity_id: switch.POOLEX_SWITCH
+      entity_id: switch.pool_heat_pump_switch
       state: "on"
     - condition: template
       value_template: >-
-        {{ states('sensor.GECKO_WATERTEMP')|float(99) <
-           states('number.POOLEX_SETPOINT')|float(38) - 1.0 }}
+        {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) <
+           states('number.pool_heat_pump_temperature')|float(38) - 1.0 }}
   actions:
-    - action: switch.turn_on
+    - action: fan.turn_on
       target:
-        entity_id: switch.CIRC_POMP
+        entity_id: fan.jaccuzzi_waterfall
     - action: input_boolean.turn_on
       target:
         entity_id: input_boolean.jacuzzi_pomp_door_ha
@@ -38,11 +32,11 @@
   triggers:
     - trigger: template
       value_template: >-
-        {{ states('sensor.GECKO_WATERTEMP')|float(99) >=
-           states('number.POOLEX_SETPOINT')|float(38) }}
+        {{ state_attr('climate.jaccuzzi_thermostat_1','current_temperature')|float(99) >=
+           states('number.pool_heat_pump_temperature')|float(38) }}
       for: "00:03:00"      # nadraaitijd
     - trigger: state
-      entity_id: switch.POOLEX_SWITCH
+      entity_id: switch.pool_heat_pump_switch
       to: "off"
       for: "00:03:00"
   conditions:
@@ -50,9 +44,9 @@
       entity_id: input_boolean.jacuzzi_pomp_door_ha
       state: "on"          # alleen uit als WIJ hem hebben aangezet
   actions:
-    - action: switch.turn_off
+    - action: fan.turn_off
       target:
-        entity_id: switch.CIRC_POMP
+        entity_id: fan.jaccuzzi_waterfall
     - action: input_boolean.turn_off
       target:
         entity_id: input_boolean.jacuzzi_pomp_door_ha
