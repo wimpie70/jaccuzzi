@@ -14,8 +14,10 @@ Ported from the YAML automations in packages/jacuzzi.yaml:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 
+import homeassistant.helpers.entity_registry as er
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -26,6 +28,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_JACUZZI_CLIMATE,
     CONF_NORMAL_SETPOINT,
     CONF_NOTIFY_SERVICE,
     CONF_PEAK_END,
@@ -38,6 +41,7 @@ from .const import (
     PEAK_MODE_OFF,
     PROBLEM_DELAY_S,
     PUMP_RUNON_S,
+    RELOAD_COOLDOWN_S,
     UNREACHABLE_S,
 )
 
@@ -81,6 +85,7 @@ class JacuzziController:
         self._peak_saved_setpoint: float | None = None  # setpoint vóór de piek
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
+        self._last_gecko_reload = 0.0
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -119,6 +124,31 @@ class JacuzziController:
             await self.hass.services.async_call(domain, service, data, blocking=True)
         except Exception as err:  # noqa: BLE001 - log en ga door
             _LOGGER.error("%s.%s faalde: %s", domain, service, err)
+
+    def _maybe_reload_gecko(self) -> None:
+        """Reload de Gecko config-entry als die in een dode sessie hangt.
+
+        De geckoal-integratie herstelt een runtime-gestorven
+        MQTT-verbinding niet altijd vanzelf (503 tijdens token-refresh ->
+        'No active connection'). Een reload forceert een nieuwe sessie —
+        net als handmatig herstarten. Max 1x per RELOAD_COOLDOWN_S.
+        """
+        now = time.monotonic()
+        if now - self._last_gecko_reload < RELOAD_COOLDOWN_S:
+            return
+        entity_entry = er.async_get(self.hass).async_get(
+            self.conf[CONF_JACUZZI_CLIMATE]
+        )
+        if entity_entry is None or entity_entry.config_entry_id is None:
+            return
+        self._last_gecko_reload = now
+        _LOGGER.warning(
+            "Gecko-entities al %d s unavailable — config entry reloaden",
+            UNREACHABLE_S,
+        )
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(entity_entry.config_entry_id)
+        )
 
     # --- lifecycle ---------------------------------------------------
 
@@ -274,13 +304,16 @@ class JacuzziController:
             "de test/reset-stekker getrapt? Check de unit.",
         )
         gecko_gone = jacuzzi is None or jacuzzi.state in ("unavailable", "unknown")
+        gecko_down = self._since_true("gecko_unavail", gecko_gone, UNREACHABLE_S)
         self._notify_once(
             "gecko_unreachable",
-            self._since_true("gecko_unavail", gecko_gone, UNREACHABLE_S),
+            gecko_down,
             "Jacuzzi: Gecko onbereikbaar",
             "De jacuzzi-entities zijn al 15 min unavailable — Gecko-cloud "
             "onbereikbaar of in.touch offline? Check de app.",
         )
+        if gecko_down:
+            self._maybe_reload_gecko()
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
 

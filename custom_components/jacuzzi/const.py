@@ -43,3 +43,4 @@ PROBLEM_DELAY_S = 60     # fault-bit aan voordat we melden
 NO_COMPRESSOR_S = 600    # warmtevraag zonder compressor -> verdacht
 EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
 UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)
+RELOAD_COOLDOWN_S = 900  # max 1x per kwartier de Gecko-entry reloaden
