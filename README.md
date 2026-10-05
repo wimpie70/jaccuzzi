@@ -54,3 +54,5 @@ Updates gaan daarna via HACS — geen SSH nodig.
 - `tools/query_dps.py` — ruwe DP-dump via tinytuya (credentials in
   gitignored `devices.json`)
 - `tools/deploy.sh` — deploy package-variant naar prod-HA via SSH
+- `lovelace/jacuzzi_card.yaml` — kant-en-klare dashboard-card (alle
+  data uit de 3 integraties): plak via Kaart toevoegen → "Manual"
