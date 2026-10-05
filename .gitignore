@@ -3,3 +3,7 @@ tinytuya.json
 devices.json
 tuya-raw.json
 snapshot.json
+
+# Python
+__pycache__/
+*.pyc
