@@ -73,6 +73,8 @@ cards:
         name: Defrost
       - entity: sensor.pool_heat_pump_compressor_duty_cycle
         name: Compressor %
+      - entity: sensor.pool_heat_pump_fan_speed
+        name: Ventilator (rpm)
 
   - type: entities
     title: Piekblokkade
