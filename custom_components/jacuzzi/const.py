@@ -27,8 +27,8 @@ DEFAULT_WATERCARE_SELECT = "select.jaccuzzi_watercare_mode"
 DEFAULT_NOTIFY_SERVICE = "notify"
 DEFAULT_PEAK_START = "16:30"
 DEFAULT_PEAK_END = "20:00"
-DEFAULT_WATERCARE_PEAK = "SUPER_SAVINGS"
-DEFAULT_WATERCARE_NORMAL = "SAVINGS"
+DEFAULT_WATERCARE_PEAK = "Super Savings"   # moet exact matchen met select-options
+DEFAULT_WATERCARE_NORMAL = "Savings"
 DEFAULT_TEMP_MARGIN = 1.0
 PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan
 PEAK_MODE_OFF = "off"             # piek = hvac_mode off

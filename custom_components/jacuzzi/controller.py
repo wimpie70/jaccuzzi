@@ -214,9 +214,41 @@ class JacuzziController:
 
     # --- peak block ----------------------------------------------------
 
-    def _watercare_option(self, key: str) -> str:
-        """Normaliseer watercare-optie naar Gecko-enum (SUPER_SAVINGS)."""
-        return str(self.conf[key]).strip().upper().replace(" ", "_")
+    async def _set_watercare(self, key: str) -> None:
+        """Selecteer een watercare-optie, tolerant voor hoofdletters/spaties.
+
+        De geckoal-select gebruikt Title-Case opties ('Super Savings');
+        gebruikers/config kunnen 'SUPER_SAVINGS' doorgeven. Match tegen de
+        werkelijke options van de entity.
+        """
+        want = str(self.conf.get(key, "")).strip()
+        option = want
+        sel = self._state("watercare_select")
+        if sel is not None:
+            options = sel.attributes.get("options") or []
+            match = next(
+                (
+                    o
+                    for o in options
+                    if str(o).strip().lower().replace("_", " ")
+                    == want.lower().replace("_", " ")
+                ),
+                None,
+            )
+            if match is None:
+                _LOGGER.warning(
+                    "Watercare-optie %r niet gevonden; geldig: %s", want, options
+                )
+            else:
+                option = match
+        await self._async_call(
+            "select",
+            "select_option",
+            {
+                "entity_id": self.conf["watercare_select"],
+                "option": option,
+            },
+        )
 
     async def _on_peak_start(self, _now) -> None:
         """Piekblokkade AAN: Poolex dicht + Watercare naar piek-mode.
@@ -242,22 +274,19 @@ class JacuzziController:
                 # niet overschrijven als we midden in de piek (her)starten
                 if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
                     self._peak_saved_setpoint = current
+            # clamp: de unit accepteert in heat-mode min. ~15 °C (tuya-local
+            # validatie), ook al is 4 °C het DP-minimum
+            peak = self.conf.get(CONF_PEAK_SETPOINT, 4.0)
+            peak = max(peak, _attr_float(poolex, "min_temp", 4.0))
             await self._async_call(
                 "climate",
                 "set_temperature",
                 {
                     "entity_id": self.conf["poolex_climate"],
-                    "temperature": self.conf.get(CONF_PEAK_SETPOINT, 4.0),
+                    "temperature": peak,
                 },
             )
-        await self._async_call(
-            "select",
-            "select_option",
-            {
-                "entity_id": self.conf["watercare_select"],
-                "option": self._watercare_option("watercare_peak"),
-            },
-        )
+        await self._set_watercare("watercare_peak")
 
     async def _on_peak_end(self, _now) -> None:
         """Piekblokkade UIT: setpoint/mode herstellen + Watercare normaal."""
@@ -280,14 +309,7 @@ class JacuzziController:
                 {"entity_id": self.conf["poolex_climate"], "temperature": restore},
             )
             self._peak_saved_setpoint = None
-        await self._async_call(
-            "select",
-            "select_option",
-            {
-                "entity_id": self.conf["watercare_select"],
-                "option": self._watercare_option("watercare_normal"),
-            },
-        )
+        await self._set_watercare("watercare_normal")
 
     # --- main evaluation -----------------------------------------------
 

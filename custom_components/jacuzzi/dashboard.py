@@ -1,14 +1,21 @@
-"""Registreer een Lovelace dashboard vanuit de integratie.
+"""Registreer het Jacuzzi Lovelace-dashboard als yaml-mode panel.
 
-Gebruikt HA's interne lovelace-dashboards-collection. Dat is geen
-stabiele API — vandaar defensief: elke fout wordt gelogd en de
-integratie werkt gewoon door.
+Storage-dashboards zijn alleen via de interne DashboardsCollection te
+maken, en die is in recente HA-versies niet meer bereikbaar via
+hass.data. Daarom registreren we een yaml-dashboard zoals
+`lovelace: dashboards:` in configuration.yaml dat ook zou doen: een
+LovelaceYAML-object in lovelace.dashboards + een built-in panel.
+
+Voordeel: het dashboard updatet automatisch mee met elke release (het
+yaml-bestand zit in de integratie). Nadeel: niet bewerkbaar in de UI.
+Alles is defensief — bij een gewijzigde interne API loggen we een
+waarschuwing en werkt de integratie gewoon door.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import os
 
 from homeassistant.core import HomeAssistant
 
@@ -17,149 +24,75 @@ _LOGGER = logging.getLogger(__name__)
 URL_PATH = "jacuzzi"
 TITLE = "Jacuzzi"
 ICON = "mdi:hot-tub"
+YAML_FILE = os.path.join(os.path.dirname(__file__), "dashboard.yaml")
 
-ENTITY_POOLEX = "climate.pool_heat_pump"
-ENTITY_KUIP = "climate.jaccuzzi_thermostat_1"
-ENTITY_POMP = "fan.jaccuzzi_waterfall"
-ENTITY_COMPRESSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
-ENTITY_PROBLEM = "binary_sensor.pool_heat_pump_problem"
-ENTITY_WARMTEVRAAG = "binary_sensor.jacuzzi_heat_demand"
-ENTITY_POMP_DOOR_HA = "binary_sensor.jacuzzi_pump_started_by_ha"
-ENTITY_TUB_TEMP = "sensor.jacuzzi_tub_temperature"
 
-# Verhoog bij elke wijziging van DASHBOARD_CONFIG — oudere opgeslagen
-# versies worden dan automatisch overschreven bij de volgende start.
-DASHBOARD_VERSION = 5
-
-DASHBOARD_CONFIG: dict[str, Any] = {
-    "jacuzzi_version": DASHBOARD_VERSION,
-    "views": [
-        {
-            "title": TITLE,
-            "path": "jacuzzi",
-            "icon": ICON,
-            "cards": [
-                {
-                    "type": "horizontal-stack",
-                    "cards": [
-                        {"type": "thermostat", "entity": ENTITY_KUIP, "name": "Kuip"},
-                        {"type": "thermostat", "entity": ENTITY_POOLEX, "name": "Poolex"},
-                    ],
-                },
-                {
-                    "type": "horizontal-stack",
-                    "cards": [
-                        {
-                            "type": "glance",
-                            "title": "Gecko — circulatie",
-                            "entities": [
-                                {"entity": ENTITY_POMP, "name": "Circulatie"},
-                                {"entity": ENTITY_POMP_DOOR_HA, "name": "Pomp door HA"},
-                            ],
-                        },
-                        {
-                            "type": "glance",
-                            "title": "Poolex — warmtepomp",
-                            "entities": [
-                                {
-                                    "entity": "switch.jacuzzi_poolex_power",
-                                    "name": "Aan/uit",
-                                },
-                                {"entity": ENTITY_WARMTEVRAAG, "name": "Warmtevraag"},
-                                {"entity": ENTITY_COMPRESSOR, "name": "Compressor"},
-                                {"entity": ENTITY_PROBLEM, "name": "Fault"},
-                            ],
-                        },
-                    ],
-                },
-                {
-                    "type": "history-graph",
-                    "title": "Temperaturen (6 uur)",
-                    "hours_to_show": 6,
-                    "entities": [
-                        {"entity": ENTITY_TUB_TEMP, "name": "Kuip"},
-                        {"entity": "sensor.pool_heat_pump_temperature", "name": "Wisselaar inlaat"},
-                        {"entity": "sensor.pool_heat_pump_outflow_temperature", "name": "Uitlaat"},
-                        {"entity": "sensor.pool_heat_pump_vent_temperature", "name": "Heetgas"},
-                        {"entity": "sensor.pool_heat_pump_coil_temperature", "name": "Verdamper"},
-                        {"entity": "sensor.pool_heat_pump_temperature_2", "name": "Buiten"},
-                    ],
-                },
-                {
-                    "type": "entities",
-                    "title": "Piekblokkade",
-                    "entities": [
-                        {"entity": "time.jacuzzi_peak_start", "name": "Start"},
-                        {"entity": "time.jacuzzi_peak_end", "name": "Einde"},
-                    ],
-                },
-                {
-                    "type": "entities",
-                    "title": "Poolex — sturing",
-                    "entities": [
-                        {"entity": "select.pool_heat_pump_auxiliary_heating", "name": "Bijstook (C4)"},
-                        {"entity": "select.pool_heat_pump_circulation_pump", "name": "Pomprelais (C8)"},
-                        {"entity": "switch.pool_heat_pump_defrost", "name": "Defrost (handmatig)"},
-                        {"entity": "binary_sensor.pool_heat_pump_defrost", "name": "Defrost actief"},
-                        {"entity": "number.pool_heat_pump_sampling_interval", "name": "Meetinterval (C9)"},
-                    ],
-                },
-                {
-                    "type": "entities",
-                    "title": "Gecko — kuip",
-                    "entities": [
-                        {"entity": "select.jaccuzzi_watercare_mode", "name": "Watercare"},
-                        {"entity": "fan.jaccuzzi_pump_1", "name": "Massagepomp 1"},
-                        {"entity": "fan.jaccuzzi_pump_2", "name": "Massagepomp 2"},
-                        {"entity": "binary_sensor.jaccuzzi_spa_status", "name": "Spa status"},
-                    ],
-                },
-            ],
-        }
-    ]
-}
+def _dashboards(lovelace) -> dict | None:
+    """LovelaceData object (nieuw) of dict (oud) — vind de dashboards-map."""
+    dashboards = getattr(lovelace, "dashboards", None)
+    if dashboards is None and isinstance(lovelace, dict):
+        dashboards = lovelace.get("dashboards")
+    return dashboards if isinstance(dashboards, dict) else None
 
 
 async def async_setup_dashboard(hass: HomeAssistant) -> None:
-    """Maak het Jacuzzi-dashboard aan als het nog niet bestaat."""
+    """Maak het Jacuzzi yaml-dashboard aan als het nog niet bestaat."""
     try:
         lovelace = hass.data.get("lovelace")
-        if lovelace is None:
-            _LOGGER.warning("Lovelace niet geladen — dashboard overgeslagen")
+        dashboards = _dashboards(lovelace) if lovelace is not None else None
+        if dashboards is None:
+            if not hass.is_running:
+                # lovelace laadt mogelijk later tijdens dezelfde start —
+                # eenmalig opnieuw proberen zodra HA draait
+                hass.bus.async_listen_once(
+                    "homeassistant_started",
+                    lambda _e: hass.async_create_task(async_setup_dashboard(hass)),
+                )
+                _LOGGER.debug("Lovelace nog niet geladen — retry bij HA-started")
+            else:
+                _LOGGER.warning("Lovelace niet geladen — dashboard overgeslagen")
             return
-
-        dashboards = getattr(lovelace, "dashboards", None) or {}
         if URL_PATH in dashboards:
-            # Bestaand dashboard: alleen overschrijven als onze versie
-            # nieuwer is (handmatige aanpassingen gaan dan wel verloren)
-            stored = await dashboards[URL_PATH].async_load(False)
-            version = (stored or {}).get("jacuzzi_version", 0)
-            if version >= DASHBOARD_VERSION:
-                _LOGGER.debug("Jacuzzi-dashboard is actueel (v%s)", version)
-                return
-            await dashboards[URL_PATH].async_save(DASHBOARD_CONFIG)
-            _LOGGER.info(
-                "Jacuzzi-dashboard bijgewerkt v%s -> v%s", version, DASHBOARD_VERSION
-            )
             return
 
-        collection = getattr(lovelace, "dashboards_collection", None)
-        if collection is None:
-            _LOGGER.warning("Geen dashboards_collection — dashboard overgeslagen")
-            return
+        from homeassistant.components import frontend
+        from homeassistant.components.lovelace.dashboard import LovelaceYAML
 
-        await collection.async_create_item(
-            {
-                "url_path": URL_PATH,
-                "title": TITLE,
-                "icon": ICON,
-                "show_in_sidebar": True,
-                "require_admin": False,
-                "mode": "storage",
-            }
+        # absolute filename wordt door hass.config.path() ongemoeid gelaten
+        yaml_dash = LovelaceYAML(hass, URL_PATH, {"filename": YAML_FILE})
+        dashboards[URL_PATH] = yaml_dash
+        yaml_dashboards = getattr(lovelace, "yaml_dashboards", None)
+        if isinstance(yaml_dashboards, dict):
+            yaml_dashboards[URL_PATH] = yaml_dash
+        elif isinstance(lovelace, dict) and isinstance(
+            lovelace.get("yaml_dashboards"), dict
+        ):
+            lovelace["yaml_dashboards"][URL_PATH] = yaml_dash
+
+        frontend.async_register_built_in_panel(
+            hass,
+            "lovelace",
+            sidebar_title=TITLE,
+            sidebar_icon=ICON,
+            frontend_url_path=URL_PATH,
+            config={"mode": "yaml"},
+            require_admin=False,
+            update=True,
         )
-        dashboard = lovelace.dashboards[URL_PATH]
-        await dashboard.async_save(DASHBOARD_CONFIG)
-        _LOGGER.info("Jacuzzi-dashboard aangemaakt (/%s)", URL_PATH)
+        _LOGGER.info("Jacuzzi-dashboard geregistreerd (/%s)", URL_PATH)
     except Exception as err:  # noqa: BLE001 - interne API kan wijzigen
         _LOGGER.warning("Dashboard-registratie mislukt (niet fataal): %s", err)
+
+
+def teardown_dashboard(hass: HomeAssistant) -> None:
+    """Verwijder het panel en de dashboard-registratie (unload)."""
+    try:
+        lovelace = hass.data.get("lovelace")
+        dashboards = _dashboards(lovelace) if lovelace is not None else None
+        if dashboards is not None:
+            dashboards.pop(URL_PATH, None)
+        from homeassistant.components import frontend
+
+        frontend.async_remove_panel(hass, URL_PATH)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Dashboard-teardown overgeslagen: %s", err)

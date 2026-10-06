@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .controller import JacuzziController
-from .dashboard import async_setup_dashboard
+from .dashboard import async_setup_dashboard, teardown_dashboard
 
 PLATFORMS = ["binary_sensor", "sensor", "switch", "time"]
 
@@ -35,4 +35,5 @@ async def _async_update_listener(
 async def async_unload_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> bool:
     """Unload: stop listeners and remove entities."""
     entry.runtime_data.async_stop()
+    teardown_dashboard(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
