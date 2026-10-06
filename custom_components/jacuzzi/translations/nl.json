@@ -71,6 +71,9 @@
       },
       "flow": {
         "name": "Waterflow"
+      },
+      "gecko_heater": {
+        "name": "Element verwarming"
       }
     },
     "sensor": {

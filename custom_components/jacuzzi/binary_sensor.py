@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import CONF_PUMP_FAN, DOMAIN
+from .const import CONF_JACUZZI_CLIMATE, CONF_PUMP_FAN, DOMAIN
 
 
 async def async_setup_entry(
@@ -25,6 +25,7 @@ async def async_setup_entry(
             JacuzziFlagBinarySensor(entry),
             JacuzziDemandBinarySensor(entry),
             JacuzziFlowBinarySensor(entry),
+            JacuzziGeckoHeaterBinarySensor(entry),
         ]
     )
 
@@ -114,3 +115,28 @@ class JacuzziFlowBinarySensor(_JacuzziBinarySensor):
         if state is None or state.state in ("unavailable", "unknown"):
             return None
         return state.state == "on"
+
+
+class JacuzziGeckoHeaterBinarySensor(_JacuzziBinarySensor):
+    """Aan wanneer het elektrische element van de Gecko-pack stookt.
+
+    Bron: hvac_action-attribuut van de Gecko climate-entity
+    (gecko zet die uit heaterActivationStatus_ van de pack).
+    """
+
+    _attr_translation_key = "gecko_heater"
+    _attr_icon = "mdi:heating-coil"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Set unique id."""
+        super().__init__(entry)
+        self._attr_unique_id = f"{entry.entry_id}_gecko_heater"
+
+    @property
+    def is_on(self) -> bool | None:
+        """True wanneer hvac_action 'heating' is."""
+        conf = {**self._entry.data, **self._entry.options}
+        state = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None
+        return state.attributes.get("hvac_action") == "heating"

@@ -100,6 +100,8 @@ cards:
         name: Flow (pomp)
       - entity: binary_sensor.pool_heat_pump_defrost
         name: Defrost
+      - entity: binary_sensor.jacuzzi_element_heating
+        name: Element
       - entity: sensor.jacuzzi_poolex_fault
         name: Fout
       - entity: sensor.jacuzzi_poolex_compressor
@@ -139,7 +141,9 @@ cards:
       - entity: switch.pool_heat_pump_defrost
         name: Defrost (handmatig)
       - entity: binary_sensor.pool_heat_pump_defrost
-        name: Defrost actief
+        name: Defrost
+      - entity: binary_sensor.jacuzzi_element_heating
+        name: Element actief
       - entity: number.pool_heat_pump_sampling_interval
         name: Meetinterval (C9)
       - entity: switch.jacuzzi_poolex_always_on
