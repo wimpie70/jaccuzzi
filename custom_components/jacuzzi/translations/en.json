@@ -19,7 +19,9 @@
           "temp_margin": "Temperature margin (hysteresis)",
           "peak_mode": "Peak block method",
           "peak_setpoint": "Setpoint during peak",
-          "normal_setpoint": "Setpoint after peak (fallback)"
+          "normal_setpoint": "Setpoint after peak (fallback)",
+          "solar_sensor": "Solar power sensor (optional — early peak end)",
+          "solar_min_watts": "Solar surplus threshold (W)"
         }
       }
     },
@@ -46,7 +48,9 @@
           "temp_margin": "Temperature margin (hysteresis)",
           "peak_mode": "Peak block method",
           "peak_setpoint": "Setpoint during peak",
-          "normal_setpoint": "Setpoint after peak (fallback)"
+          "normal_setpoint": "Setpoint after peak (fallback)",
+          "solar_sensor": "Solar power sensor (optional — early peak end)",
+          "solar_min_watts": "Solar surplus threshold (W)"
         }
       }
     }

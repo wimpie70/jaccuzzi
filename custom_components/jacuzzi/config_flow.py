@@ -20,6 +20,8 @@ from .const import (
     CONF_NORMAL_SETPOINT,
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
+    CONF_SOLAR_MIN_W,
+    CONF_SOLAR_SENSOR,
     CONF_TEMP_MARGIN,
     CONF_WATERCARE_NORMAL,
     CONF_WATERCARE_PEAK,
@@ -30,6 +32,7 @@ from .const import (
     DEFAULT_NOTIFY_SERVICE,
     DEFAULT_PEAK_MODE,
     DEFAULT_PEAK_SETPOINT,
+    DEFAULT_SOLAR_MIN_W,
     DEFAULT_PEAK_END,
     DEFAULT_PEAK_START,
     DEFAULT_POOLEX_CLIMATE,
@@ -67,6 +70,7 @@ DEFAULTS = {
     CONF_PEAK_MODE: DEFAULT_PEAK_MODE,
     CONF_PEAK_SETPOINT: DEFAULT_PEAK_SETPOINT,
     CONF_NORMAL_SETPOINT: DEFAULT_NORMAL_SETPOINT,
+    CONF_SOLAR_MIN_W: DEFAULT_SOLAR_MIN_W,
 }
 
 
@@ -118,6 +122,16 @@ def _schema(current: dict | None = None) -> vol.Schema:
         CONF_NORMAL_SETPOINT, default=current.get(CONF_NORMAL_SETPOINT, DEFAULT_NORMAL_SETPOINT)
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=20.0, max=42.0, step=0.5, unit_of_measurement="°C")
+    )
+    data[vol.Optional(
+        CONF_SOLAR_SENSOR, default=current.get(CONF_SOLAR_SENSOR, "")
+    )] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain="sensor", device_class="power")
+    )
+    data[vol.Optional(
+        CONF_SOLAR_MIN_W, default=current.get(CONF_SOLAR_MIN_W, DEFAULT_SOLAR_MIN_W)
+    )] = selector.NumberSelector(
+        selector.NumberSelectorConfig(min=500, max=10000, step=100, unit_of_measurement="W")
     )
     return vol.Schema(data)
 

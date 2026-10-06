@@ -35,6 +35,8 @@ from .const import (
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
     CONF_PEAK_START,
+    CONF_SOLAR_MIN_W,
+    CONF_SOLAR_SENSOR,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
     NO_COMPRESSOR_S,
@@ -42,6 +44,7 @@ from .const import (
     PROBLEM_DELAY_S,
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
+    SOLAR_SURPLUS_S,
     UNREACHABLE_S,
 )
 
@@ -87,6 +90,7 @@ class JacuzziController:
         self._notified: set[str] = set()
         self._last_gecko_reload = 0.0
         self._peak_active = False        # piek-blok is toegepast
+        self._early_restored = False     # PV-einde al gedaan dit venster
         self._startup_restore_checked = False  # eenmalig: achtergebleven
         #                                      piek-setpoint herstellen
         self._unsubs = []
@@ -362,26 +366,48 @@ class JacuzziController:
         # vertrouwen (die missen als HA down/crasht op dat moment) maar op
         # de overgang in_venster <-> actief per tick.
         in_peak = self._in_peak_window()
-        if in_peak and not self._peak_active:
+        if in_peak and not self._peak_active and not self._early_restored:
             await self._on_peak_start(None)   # zet _peak_active zelf
-        elif not in_peak and self._peak_active:
-            await self._on_peak_end(None)     # zet _peak_active zelf
-        elif not in_peak and not self._startup_restore_checked:
-            # eenmalig: als de piek-einde-trigger ooit gemist is (HA down)
-            # kan de Poolex op zijn piek-setpoint blijven staan -> herstel
-            self._startup_restore_checked = True
-            cur = _attr_float(poolex, "temperature", 99.0)
-            peak_sp = max(
-                self.conf.get(CONF_PEAK_SETPOINT, 4.0),
-                _attr_float(poolex, "min_temp", 4.0),
-            )
-            if cur <= peak_sp + 0.5:
-                _LOGGER.warning(
-                    "Poolex-setpoint %.1f = piek-niveau buiten piekvenster "
-                    "(gemist piek-einde?) — herstellen naar normaal",
-                    cur,
+        elif in_peak and self._peak_active:
+            # Vervroegd einde op PV-overschot: stoken op zonnestroom ipv
+            # wachten op de klok. _early_restored voorkomt re-entry.
+            solar_entity = self.conf.get(CONF_SOLAR_SENSOR, "")
+            if solar_entity:
+                solar = self.hass.states.get(solar_entity)
+                surplus = (
+                    solar is not None
+                    and solar.state not in ("unavailable", "unknown")
+                    and _float(solar)
+                    >= self.conf.get(CONF_SOLAR_MIN_W, 2000)
                 )
-                await self._on_peak_end(None)
+                if self._since_true("solar_surplus", surplus, SOLAR_SURPLUS_S):
+                    _LOGGER.info(
+                        "PV-overschot >= %s W — piekblokkade vervroegd beëindigd",
+                        self.conf.get(CONF_SOLAR_MIN_W, 2000),
+                    )
+                    self._early_restored = True
+                    await self._on_peak_end(None)
+        elif not in_peak:
+            self._early_restored = False
+            if self._peak_active:
+                await self._on_peak_end(None)  # zet _peak_active zelf
+            elif not self._startup_restore_checked:
+                # eenmalig: als de piek-einde-trigger ooit gemist is (HA
+                # down) kan de Poolex op zijn piek-setpoint blijven staan
+                # -> herstel
+                self._startup_restore_checked = True
+                cur = _attr_float(poolex, "temperature", 99.0)
+                peak_sp = max(
+                    self.conf.get(CONF_PEAK_SETPOINT, 4.0),
+                    _attr_float(poolex, "min_temp", 4.0),
+                )
+                if cur <= peak_sp + 0.5:
+                    _LOGGER.warning(
+                        "Poolex-setpoint %.1f = piek-niveau buiten piekvenster "
+                        "(gemist piek-einde?) — herstellen naar normaal",
+                        cur,
+                    )
+                    await self._on_peak_end(None)
 
         poolex_off = poolex.state == "off"
         setpoint = _attr_float(poolex, "temperature", 38.0)
