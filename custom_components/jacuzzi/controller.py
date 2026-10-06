@@ -86,7 +86,9 @@ class JacuzziController:
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._last_gecko_reload = 0.0
-        self._peak_pending = False       # piek-catch-up wacht op entities
+        self._peak_active = False        # piek-blok is toegepast
+        self._startup_restore_checked = False  # eenmalig: achtergebleven
+        #                                      piek-setpoint herstellen
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -182,9 +184,6 @@ class JacuzziController:
                 self.hass, self._on_peak_end, hour=hh, minute=mm, second=0
             )
         )
-        # HA-restart midden in het piekvenster -> blokkeer alsnog, maar
-        # pas in _async_evaluate als de bron-entities geladen zijn
-        self._peak_pending = self._in_peak_window()
         await self._async_evaluate()
 
     def _in_peak_window(self) -> bool:
@@ -260,6 +259,11 @@ class JacuzziController:
         de compressor krijgt nooit vraag. 'off'-mode: hvac_mode uit.
         """
         _LOGGER.info("Piekblokkade AAN (%s)", self.conf[CONF_PEAK_START])
+        poolex = self._state("poolex_climate")
+        if poolex is None or poolex.state in ("unavailable", "unknown"):
+            # _peak_active blijft False -> evaluate probeert het opnieuw
+            _LOGGER.warning("Piekblokkade AAN uitgesteld — Poolex unavailable")
+            return
         if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
             await self._async_call(
                 "climate",
@@ -267,36 +271,36 @@ class JacuzziController:
                 {"entity_id": self.conf["poolex_climate"], "hvac_mode": "off"},
             )
         else:
-            poolex = self._state("poolex_climate")
-            if poolex is not None and poolex.state not in (
-                "unavailable",
-                "unknown",
-            ):
-                current = _attr_float(poolex, "temperature", 38.0)
-                # niet overschrijven als we midden in de piek (her)starten
-                if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
-                    self._peak_saved_setpoint = current
-                # clamp: de unit accepteert in heat-mode min. ~15 °C
-                # (tuya-local validatie), ook al is 4 °C het DP-minimum
-                peak = max(
-                    self.conf.get(CONF_PEAK_SETPOINT, 4.0),
-                    _attr_float(poolex, "min_temp", 4.0),
-                )
-                await self._async_call(
-                    "climate",
-                    "set_temperature",
-                    {
-                        "entity_id": self.conf["poolex_climate"],
-                        "temperature": peak,
-                    },
-                )
-            else:
-                _LOGGER.warning("Poolex unavailable — piek-setpoint niet gezet")
+            # clamp: de unit accepteert in heat-mode min. ~15 °C
+            # (tuya-local validatie), ook al is 4 °C het DP-minimum
+            peak = max(
+                self.conf.get(CONF_PEAK_SETPOINT, 4.0),
+                _attr_float(poolex, "min_temp", 4.0),
+            )
+            current = _attr_float(poolex, "temperature", 38.0)
+            # niet overschrijven als we midden in de piek (her)starten:
+            # vergelijk met het GECLAMPTE piek-niveau, niet de config
+            if current > peak + 0.5:
+                self._peak_saved_setpoint = current
+            await self._async_call(
+                "climate",
+                "set_temperature",
+                {
+                    "entity_id": self.conf["poolex_climate"],
+                    "temperature": peak,
+                },
+            )
         await self._set_watercare("watercare_peak")
+        self._peak_active = True
 
     async def _on_peak_end(self, _now) -> None:
         """Piekblokkade UIT: setpoint/mode herstellen + Watercare normaal."""
         _LOGGER.info("Piekblokkade UIT (%s)", self.conf[CONF_PEAK_END])
+        poolex = self._state("poolex_climate")
+        if poolex is None or poolex.state in ("unavailable", "unknown"):
+            # _peak_active blijft True -> evaluate probeert het opnieuw
+            _LOGGER.warning("Piekblokkade UIT uitgesteld — Poolex unavailable")
+            return
         if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
             await self._async_call(
                 "climate",
@@ -304,28 +308,22 @@ class JacuzziController:
                 {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
             )
         else:
-            poolex = self._state("poolex_climate")
-            if poolex is not None and poolex.state not in (
-                "unavailable",
-                "unknown",
-            ):
-                restore = (
-                    self._peak_saved_setpoint
-                    if self._peak_saved_setpoint is not None
-                    else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
-                )
-                await self._async_call(
-                    "climate",
-                    "set_temperature",
-                    {
-                        "entity_id": self.conf["poolex_climate"],
-                        "temperature": restore,
-                    },
-                )
-            else:
-                _LOGGER.warning("Poolex unavailable — setpoint niet hersteld")
+            restore = (
+                self._peak_saved_setpoint
+                if self._peak_saved_setpoint is not None
+                else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
+            )
+            await self._async_call(
+                "climate",
+                "set_temperature",
+                {
+                    "entity_id": self.conf["poolex_climate"],
+                    "temperature": restore,
+                },
+            )
             self._peak_saved_setpoint = None
         await self._set_watercare("watercare_normal")
+        self._peak_active = False
 
     # --- main evaluation -----------------------------------------------
 
@@ -360,12 +358,30 @@ class JacuzziController:
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
 
-        # Piekvangst na restart: pas uitvoeren als de entities er zijn;
-        # bij 'unavailable' blijft hij pending en proberen we het volgende
-        # tick opnieuw
-        if self._peak_pending and poolex.state not in ("unavailable", "unknown"):
-            self._peak_pending = False
-            await self._on_peak_start(None)
+        # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers
+        # vertrouwen (die missen als HA down/crasht op dat moment) maar op
+        # de overgang in_venster <-> actief per tick.
+        in_peak = self._in_peak_window()
+        if in_peak and not self._peak_active:
+            await self._on_peak_start(None)   # zet _peak_active zelf
+        elif not in_peak and self._peak_active:
+            await self._on_peak_end(None)     # zet _peak_active zelf
+        elif not in_peak and not self._startup_restore_checked:
+            # eenmalig: als de piek-einde-trigger ooit gemist is (HA down)
+            # kan de Poolex op zijn piek-setpoint blijven staan -> herstel
+            self._startup_restore_checked = True
+            cur = _attr_float(poolex, "temperature", 99.0)
+            peak_sp = max(
+                self.conf.get(CONF_PEAK_SETPOINT, 4.0),
+                _attr_float(poolex, "min_temp", 4.0),
+            )
+            if cur <= peak_sp + 0.5:
+                _LOGGER.warning(
+                    "Poolex-setpoint %.1f = piek-niveau buiten piekvenster "
+                    "(gemist piek-einde?) — herstellen naar normaal",
+                    cur,
+                )
+                await self._on_peak_end(None)
 
         poolex_off = poolex.state == "off"
         setpoint = _attr_float(poolex, "temperature", 38.0)
