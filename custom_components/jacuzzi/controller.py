@@ -553,12 +553,14 @@ class JacuzziController:
             and pump_on
             and now_mono - self._mix_last >= mix_interval
         ):
-            target = MIX_PUMPS[self._mix_next]
-            if self.hass.states.is_state(target, "on"):
-                # al aan (gebruiker/filter) — mengt toch al, teller reset
+            if any(
+                self.hass.states.is_state(p, "on") for p in MIX_PUMPS
+            ):
+                # een massagepomp draait al (gebruiker/filter) — er wordt
+                # toch al gemengd; klok resetten, deze puls overslaan
                 self._mix_last = now_mono
             elif await self._async_call(
-                "fan", "turn_on", {"entity_id": target}
+                "fan", "turn_on", {"entity_id": MIX_PUMPS[self._mix_next]}
             ):
                 _LOGGER.info(
                     "Meng-puls: %s %d s aan (compressor actief)",
