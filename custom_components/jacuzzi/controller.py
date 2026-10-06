@@ -224,23 +224,25 @@ class JacuzziController:
         want = str(self.conf.get(key, "")).strip()
         option = want
         sel = self._state("watercare_select")
-        if sel is not None:
-            options = sel.attributes.get("options") or []
-            match = next(
-                (
-                    o
-                    for o in options
-                    if str(o).strip().lower().replace("_", " ")
-                    == want.lower().replace("_", " ")
-                ),
-                None,
+        if sel is None or sel.state in ("unavailable", "unknown"):
+            _LOGGER.warning("Watercare-select unavailable — %r overgeslagen", want)
+            return
+        options = sel.attributes.get("options") or []
+        match = next(
+            (
+                o
+                for o in options
+                if str(o).strip().lower().replace("_", " ")
+                == want.lower().replace("_", " ")
+            ),
+            None,
+        )
+        if match is None:
+            _LOGGER.warning(
+                "Watercare-optie %r niet gevonden; geldig: %s", want, options
             )
-            if match is None:
-                _LOGGER.warning(
-                    "Watercare-optie %r niet gevonden; geldig: %s", want, options
-                )
-            else:
-                option = match
+        else:
+            option = match
         await self._async_call(
             "select",
             "select_option",
@@ -274,18 +276,22 @@ class JacuzziController:
                 # niet overschrijven als we midden in de piek (her)starten
                 if current > self.conf.get(CONF_PEAK_SETPOINT, 4.0):
                     self._peak_saved_setpoint = current
-            # clamp: de unit accepteert in heat-mode min. ~15 °C (tuya-local
-            # validatie), ook al is 4 °C het DP-minimum
-            peak = self.conf.get(CONF_PEAK_SETPOINT, 4.0)
-            peak = max(peak, _attr_float(poolex, "min_temp", 4.0))
-            await self._async_call(
-                "climate",
-                "set_temperature",
-                {
-                    "entity_id": self.conf["poolex_climate"],
-                    "temperature": peak,
-                },
-            )
+                # clamp: de unit accepteert in heat-mode min. ~15 °C
+                # (tuya-local validatie), ook al is 4 °C het DP-minimum
+                peak = max(
+                    self.conf.get(CONF_PEAK_SETPOINT, 4.0),
+                    _attr_float(poolex, "min_temp", 4.0),
+                )
+                await self._async_call(
+                    "climate",
+                    "set_temperature",
+                    {
+                        "entity_id": self.conf["poolex_climate"],
+                        "temperature": peak,
+                    },
+                )
+            else:
+                _LOGGER.warning("Poolex unavailable — piek-setpoint niet gezet")
         await self._set_watercare("watercare_peak")
 
     async def _on_peak_end(self, _now) -> None:
@@ -298,16 +304,26 @@ class JacuzziController:
                 {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
             )
         else:
-            restore = (
-                self._peak_saved_setpoint
-                if self._peak_saved_setpoint is not None
-                else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
-            )
-            await self._async_call(
-                "climate",
-                "set_temperature",
-                {"entity_id": self.conf["poolex_climate"], "temperature": restore},
-            )
+            poolex = self._state("poolex_climate")
+            if poolex is not None and poolex.state not in (
+                "unavailable",
+                "unknown",
+            ):
+                restore = (
+                    self._peak_saved_setpoint
+                    if self._peak_saved_setpoint is not None
+                    else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
+                )
+                await self._async_call(
+                    "climate",
+                    "set_temperature",
+                    {
+                        "entity_id": self.conf["poolex_climate"],
+                        "temperature": restore,
+                    },
+                )
+            else:
+                _LOGGER.warning("Poolex unavailable — setpoint niet hersteld")
             self._peak_saved_setpoint = None
         await self._set_watercare("watercare_normal")
 

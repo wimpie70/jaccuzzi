@@ -105,6 +105,8 @@ views:
             name: Massagepomp 1
           - entity: fan.jaccuzzi_pump_2
             name: Massagepomp 2
+          - entity: light.jaccuzzi_light_1
+            name: Verlichting
           - entity: select.jaccuzzi_watercare_mode
             name: Watercare
           - entity: binary_sensor.jaccuzzi_spa_status
