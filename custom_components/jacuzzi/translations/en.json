@@ -85,6 +85,9 @@
       },
       "poolex_fan_speed": {
         "name": "Poolex fan speed"
+      },
+      "poolex_fault": {
+        "name": "Poolex fault"
       }
     },
     "switch": {

@@ -29,8 +29,9 @@ ENERGY_SENSORS = (
     (CONF_JACUZZI_POWER_SENSOR, "jacuzzi_energy"),
 )
 
-# tuya-local entity van de Poolex-ventilator (vaste id in deze setup)
+# tuya-local entities van de Poolex (vaste id's in deze setup)
 POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
+POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
 POOLEX_FAN_MAX_RPM = 1000.0
 
@@ -44,6 +45,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         JacuzziTubTempSensor(entry),
         JacuzziPoolexFanSensor(entry),
+        JacuzziPoolexFaultSensor(entry),
     ]
     conf = {**entry.data, **entry.options}
     for conf_key, translation_key in ENERGY_SENSORS:
@@ -137,6 +139,50 @@ class JacuzziPoolexFanSensor(SensorEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, [POOLEX_FAN_SENSOR], self._on_source
+            )
+        )
+
+    @callback
+    def _on_source(self, _event: Event[EventStateChangedData]) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziPoolexFaultSensor(SensorEntity):
+    """Poolex-foutstatus als 0/100-lijn voor de aan/uit-grafiek.
+
+    binary_sensor.pool_heat_pump_problem geeft alleen aan/uit — als
+    numerieke 0/100-sensor overlapt hij de compressor/ventilator-as.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "poolex_fault"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:alert-circle"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_poolex_fault"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """100 bij fault, 0 bij ok."""
+        state = self.hass.states.get(POOLEX_PROBLEM_SENSOR)
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None
+        return 100.0 if state.state == "on" else 0.0
+
+    async def async_added_to_hass(self) -> None:
+        """Volg de fault binary sensor."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [POOLEX_PROBLEM_SENSOR], self._on_source
             )
         )
 

@@ -85,6 +85,9 @@
       },
       "poolex_fan_speed": {
         "name": "Poolex ventilator"
+      },
+      "poolex_fault": {
+        "name": "Poolex fout"
       }
     },
     "switch": {

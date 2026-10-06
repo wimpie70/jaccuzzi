@@ -8,6 +8,33 @@
 
 type: vertical-stack
 cards:
+  - type: markdown
+    title: Hoe de regeling werkt
+    content: >-
+      **Warmtevraag** = kuip-temperatuur (Gecko) < Poolex-setpoint − 1 °C.
+      Dan zet HA de circulatiepomp aan; de Poolex start de compressor zelf
+      zodra er flow is. Pomp gaat uit 3 min nadat het setpoint bereikt is.
+
+      **Hoe de Poolex zelf regelt**: het getal op de Poolex-thermostaat is
+      de *water*temperatuur die de unit nastreeft (gemeten op de inlaat).
+      Compressor loopt tot het water het setpoint bereikt (+hysterese),
+      start weer als het te ver onder het setpoint zakt. Zonder flow geen
+      compressor — de interne flow-beveiliging (d1-fout) grijpt anders in.
+      Bij koude buitenlucht vriest de verdamper toe; de unit draait dan
+      kort terug (defrost: ventilator uit, uitlaat-temp dip) — dat is
+      normaal en geen storing.
+
+      **Piekblokkade**: tussen start/einde → setpoint 15 °C + Watercare
+      Super Savings. PV-overschot ≥ drempel gedurende 10 min → vervroegd
+      einde. De blokkade herstelt zichzelf ook als HA een grens mist.
+
+      **Poolex altijd aan**: buiten de piek wordt hvac 'off' na 60 s
+      teruggezet naar heat — vorstbeveiliging van de unit werkt alleen in
+      standby. Zet deze switch uit bij onderhoud/winterstalling.
+
+      **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
+      De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
+
   - type: horizontal-stack
     cards:
       - type: thermostat
@@ -73,6 +100,8 @@ cards:
         name: Flow (pomp)
       - entity: binary_sensor.pool_heat_pump_defrost
         name: Defrost
+      - entity: sensor.jacuzzi_poolex_fault
+        name: Fout
       - entity: sensor.pool_heat_pump_compressor_duty_cycle
         name: Compressor %
       - entity: sensor.jacuzzi_poolex_fan_speed
@@ -133,29 +162,3 @@ cards:
       - entity: binary_sensor.jaccuzzi_spa_status
         name: Spa status
 
-  - type: markdown
-    title: Hoe de regeling werkt
-    content: >-
-      **Warmtevraag** = kuip-temperatuur (Gecko) < Poolex-setpoint − 1 °C.
-      Dan zet HA de circulatiepomp aan; de Poolex start de compressor zelf
-      zodra er flow is. Pomp gaat uit 3 min nadat het setpoint bereikt is.
-
-      **Hoe de Poolex zelf regelt**: het getal op de Poolex-thermostaat is
-      de *water*temperatuur die de unit nastreeft (gemeten op de inlaat).
-      Compressor loopt tot het water het setpoint bereikt (+hysterese),
-      start weer als het te ver onder het setpoint zakt. Zonder flow geen
-      compressor — de interne flow-beveiliging (d1-fout) grijpt anders in.
-      Bij koude buitenlucht vriest de verdamper toe; de unit draait dan
-      kort terug (defrost: ventilator uit, uitlaat-temp dip) — dat is
-      normaal en geen storing.
-
-      **Piekblokkade**: tussen start/einde → setpoint 15 °C + Watercare
-      Super Savings. PV-overschot ≥ drempel gedurende 10 min → vervroegd
-      einde. De blokkade herstelt zichzelf ook als HA een grens mist.
-
-      **Poolex altijd aan**: buiten de piek wordt hvac 'off' na 60 s
-      teruggezet naar heat — vorstbeveiliging van de unit werkt alleen in
-      standby. Zet deze switch uit bij onderhoud/winterstalling.
-
-      **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
-      De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
