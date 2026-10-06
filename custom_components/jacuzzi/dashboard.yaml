@@ -37,8 +37,8 @@ views:
                 name: Fault
 
       - type: history-graph
-        title: Temperaturen (6 uur)
-        hours_to_show: 6
+        title: Temperaturen (2 dagen)
+        hours_to_show: 48
         entities:
           - entity: sensor.jacuzzi_tub_temperature
             name: Kuip
@@ -53,6 +53,25 @@ views:
           - entity: sensor.pool_heat_pump_temperature_2
             name: Buiten
 
+      - type: history-graph
+        title: Aan/uit (2 dagen)
+        hours_to_show: 48
+        entities:
+          - entity: fan.jaccuzzi_waterfall
+            name: Circulatie
+          - entity: fan.jaccuzzi_pump_1
+            name: Massagepomp 1
+          - entity: fan.jaccuzzi_pump_2
+            name: Massagepomp 2
+          - entity: binary_sensor.jacuzzi_pump_started_by_ha
+            name: Pomp door HA
+          - entity: binary_sensor.jacuzzi_heat_demand
+            name: Warmtevraag
+          - entity: binary_sensor.pool_heat_pump_defrost
+            name: Defrost
+          - entity: sensor.pool_heat_pump_compressor_duty_cycle
+            name: Compressor %
+
       - type: entities
         title: Piekblokkade
         entities:
@@ -63,6 +82,7 @@ views:
 
       - type: entities
         title: Poolex — sturing
+        show_header_toggle: false
         entities:
           - entity: select.pool_heat_pump_auxiliary_heating
             name: Bijstook (C4)
@@ -77,12 +97,15 @@ views:
 
       - type: entities
         title: Gecko — kuip
+        show_header_toggle: false
         entities:
-          - entity: select.jaccuzzi_watercare_mode
-            name: Watercare
+          - entity: fan.jaccuzzi_waterfall
+            name: Circulatiepomp
           - entity: fan.jaccuzzi_pump_1
             name: Massagepomp 1
           - entity: fan.jaccuzzi_pump_2
             name: Massagepomp 2
+          - entity: select.jaccuzzi_watercare_mode
+            name: Watercare
           - entity: binary_sensor.jaccuzzi_spa_status
             name: Spa status
