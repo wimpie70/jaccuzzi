@@ -88,6 +88,9 @@
       },
       "poolex_fault": {
         "name": "Poolex fout"
+      },
+      "poolex_compressor": {
+        "name": "Poolex compressor"
       }
     },
     "switch": {

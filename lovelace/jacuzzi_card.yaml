@@ -60,7 +60,7 @@ cards:
             name: Aan/uit
           - entity: binary_sensor.jacuzzi_heat_demand
             name: Warmtevraag
-          - entity: sensor.pool_heat_pump_compressor_duty_cycle
+          - entity: sensor.jacuzzi_poolex_compressor
             name: Compressor
           - entity: binary_sensor.pool_heat_pump_problem
             name: Fault
@@ -102,7 +102,7 @@ cards:
         name: Defrost
       - entity: sensor.jacuzzi_poolex_fault
         name: Fout
-      - entity: sensor.pool_heat_pump_compressor_duty_cycle
+      - entity: sensor.jacuzzi_poolex_compressor
         name: Compressor %
       - entity: sensor.jacuzzi_poolex_fan_speed
         name: Ventilator %

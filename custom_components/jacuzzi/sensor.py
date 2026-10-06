@@ -32,8 +32,11 @@ ENERGY_SENSORS = (
 # tuya-local entities van de Poolex (vaste id's in deze setup)
 POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
 POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
+POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
 POOLEX_FAN_MAX_RPM = 1000.0
+# compressor duty cycle is 0-1500 ruw -> /15 = %
+POOLEX_COMPRESSOR_MAX = 1500.0
 
 
 async def async_setup_entry(
@@ -46,6 +49,7 @@ async def async_setup_entry(
         JacuzziTubTempSensor(entry),
         JacuzziPoolexFanSensor(entry),
         JacuzziPoolexFaultSensor(entry),
+        JacuzziPoolexCompressorSensor(entry),
     ]
     conf = {**entry.data, **entry.options}
     for conf_key, translation_key in ENERGY_SENSORS:
@@ -139,6 +143,54 @@ class JacuzziPoolexFanSensor(SensorEntity):
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, [POOLEX_FAN_SENSOR], self._on_source
+            )
+        )
+
+    @callback
+    def _on_source(self, _event: Event[EventStateChangedData]) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziPoolexCompressorSensor(SensorEntity):
+    """Compressor duty cycle (0-1500 ruw) als % voor gezamenlijke as.
+
+    De tuya-sensor heeft geen eenheid; history-graph splitst per eenheid,
+    dus een afgeleide %-sensor deelt de grafiek met ventilator/fault.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "poolex_compressor"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:hvac"
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_poolex_compressor"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """raw / 1500 * 100, afgekapt op 100."""
+        state = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None
+        try:
+            return min(100.0, float(state.state) / POOLEX_COMPRESSOR_MAX * 100)
+        except ValueError:
+            return None
+
+    async def async_added_to_hass(self) -> None:
+        """Volg de ruwe duty cycle sensor."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [POOLEX_COMPRESSOR_SENSOR], self._on_source
             )
         )
 
