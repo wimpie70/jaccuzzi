@@ -91,6 +91,9 @@
       },
       "poolex_compressor": {
         "name": "Poolex compressor"
+      },
+      "poolex_inlet_temperature": {
+        "name": "Poolex inlet"
       }
     },
     "switch": {

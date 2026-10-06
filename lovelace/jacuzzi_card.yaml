@@ -71,7 +71,7 @@ cards:
     entities:
       - entity: sensor.jacuzzi_tub_temperature
         name: Kuip
-      - entity: sensor.pool_heat_pump_temperature
+      - entity: sensor.jacuzzi_poolex_inlet_temperature
         name: Wisselaar inlaat
       - entity: sensor.pool_heat_pump_outflow_temperature
         name: Uitlaat
