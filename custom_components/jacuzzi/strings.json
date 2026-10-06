@@ -82,6 +82,9 @@
       },
       "jacuzzi_energy": {
         "name": "Verbruik"
+      },
+      "poolex_fan_speed": {
+        "name": "Poolex ventilator"
       }
     },
     "switch": {

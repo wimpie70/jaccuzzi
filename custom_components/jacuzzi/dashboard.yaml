@@ -73,8 +73,8 @@ views:
             name: Defrost
           - entity: sensor.pool_heat_pump_compressor_duty_cycle
             name: Compressor %
-          - entity: sensor.pool_heat_pump_fan_speed
-            name: Ventilator (rpm)
+          - entity: sensor.jacuzzi_poolex_fan_speed
+            name: Ventilator %
 
       - type: entities
         title: Piekblokkade
@@ -137,6 +137,15 @@ views:
           **Warmtevraag** = kuip-temperatuur (Gecko) < Poolex-setpoint − 1 °C.
           Dan zet HA de circulatiepomp aan; de Poolex start de compressor zelf
           zodra er flow is. Pomp gaat uit 3 min nadat het setpoint bereikt is.
+
+          **Hoe de Poolex zelf regelt**: het getal op de Poolex-thermostaat is
+          de *water*temperatuur die de unit nastreeft (gemeten op de inlaat).
+          Compressor loopt tot het water het setpoint bereikt (+hysterese),
+          start weer als het te ver onder het setpoint zakt. Zonder flow geen
+          compressor — de interne flow-beveiliging (d1-fout) grijpt anders in.
+          Bij koude buitenlucht vriest de verdamper toe; de unit draait dan
+          kort terug (defrost: ventilator uit, uitlaat-temp dip) — dat is
+          normaal en geen storing.
 
           **Piekblokkade**: tussen start/einde → setpoint 15 °C + Watercare
           Super Savings. PV-overschot ≥ drempel gedurende 10 min → vervroegd

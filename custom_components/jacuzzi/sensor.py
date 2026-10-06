@@ -29,6 +29,11 @@ ENERGY_SENSORS = (
     (CONF_JACUZZI_POWER_SENSOR, "jacuzzi_energy"),
 )
 
+# tuya-local entity van de Poolex-ventilator (vaste id in deze setup)
+POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
+# ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
+POOLEX_FAN_MAX_RPM = 1000.0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -36,7 +41,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the mirror sensor + configured energy sensors."""
-    entities: list[SensorEntity] = [JacuzziTubTempSensor(entry)]
+    entities: list[SensorEntity] = [
+        JacuzziTubTempSensor(entry),
+        JacuzziPoolexFanSensor(entry),
+    ]
     conf = {**entry.data, **entry.options}
     for conf_key, translation_key in ENERGY_SENSORS:
         if conf.get(conf_key):
@@ -86,6 +94,54 @@ class JacuzziTubTempSensor(SensorEntity):
 
     @callback
     def _async_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziPoolexFanSensor(SensorEntity):
+    """Poolex-ventilatorsnelheid als % van max (~1000 rpm).
+
+    Zodat ventilator en compressor duty cycle op dezelfde 0-100-as in
+    één history-graph kunnen.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "poolex_fan_speed"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:fan"
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_poolex_fan_speed"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """rpm / 1000 * 100, afgekapt op 100."""
+        state = self.hass.states.get(POOLEX_FAN_SENSOR)
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None
+        try:
+            return min(100.0, float(state.state) / POOLEX_FAN_MAX_RPM * 100)
+        except ValueError:
+            return None
+
+    async def async_added_to_hass(self) -> None:
+        """Volg de bron-rpm sensor."""
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [POOLEX_FAN_SENSOR], self._on_source
+            )
+        )
+
+    @callback
+    def _on_source(self, _event: Event[EventStateChangedData]) -> None:
         self.async_write_ha_state()
 
 

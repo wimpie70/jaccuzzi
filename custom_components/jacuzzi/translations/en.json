@@ -82,6 +82,9 @@
       },
       "jacuzzi_energy": {
         "name": "Energy"
+      },
+      "poolex_fan_speed": {
+        "name": "Poolex fan speed"
       }
     },
     "switch": {
