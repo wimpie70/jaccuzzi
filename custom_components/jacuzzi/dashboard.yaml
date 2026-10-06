@@ -56,6 +56,10 @@ views:
                 name: Circulatie
               - entity: binary_sensor.jacuzzi_pump_started_by_ha
                 name: Pomp door HA
+              - entity: fan.jaccuzzi_pump_1
+                name: Mengen 1
+              - entity: fan.jaccuzzi_pump_2
+                name: Mengen 2
           - type: glance
             title: Poolex — warmtepomp
             entities:

@@ -32,13 +32,13 @@ cards:
       teruggezet naar heat — vorstbeveiliging van de unit werkt alleen in
       standby. Zet deze switch uit bij onderhoud/winterstalling.
 
-          **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
-          De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
+      **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
+      De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
 
-          **Meng-puls**: zolang de compressor stookt gaat elke 30 min kort
-          (60 s) een massagepomp aan — afwisselend pomp 1 en 2. Mengt de
-          warme/koude lagen zodat kuip- en inlaat-sensor de echte
-          bulk-temperatuur zien en de warmtevraag niet te vroeg stopt.
+      **Meng-puls**: zolang de compressor stookt gaat elke 30 min kort
+      (60 s) een massagepomp aan — afwisselend pomp 1 en 2. Mengt de
+      warme/koude lagen zodat kuip- en inlaat-sensor de echte
+      bulk-temperatuur zien en de warmtevraag niet te vroeg stopt.
 
   - type: horizontal-stack
     cards:
@@ -58,6 +58,10 @@ cards:
             name: Circulatie
           - entity: binary_sensor.jacuzzi_pump_started_by_ha
             name: Pomp door HA
+          - entity: fan.jaccuzzi_pump_1
+            name: Mengen 1
+          - entity: fan.jaccuzzi_pump_2
+            name: Mengen 2
       - type: glance
         title: Poolex — warmtepomp
         entities:
