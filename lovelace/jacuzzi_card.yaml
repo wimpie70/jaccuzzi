@@ -134,11 +134,11 @@ cards:
     title: Meng-puls
     show_header_toggle: false
     entities:
-      - entity: switch.jacuzzi_meng_puls
+      - entity: switch.jacuzzi_mixing_pulse
         name: Actief
-      - entity: number.jacuzzi_meng_interval
+      - entity: number.jacuzzi_mixing_interval
         name: Interval
-      - entity: number.jacuzzi_meng_pulsduur
+      - entity: number.jacuzzi_mixing_pulse_duration
         name: Pulsduur
 
   - type: entities
