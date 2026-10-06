@@ -20,7 +20,9 @@ from .const import (
     CONF_NORMAL_SETPOINT,
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
+    DEFAULT_POOLEX_ALWAYS_ON,
     CONF_JACUZZI_POWER_SENSOR,
+    CONF_POOLEX_ALWAYS_ON,
     CONF_POOLEX_POWER_SENSOR,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
@@ -125,6 +127,10 @@ def _schema(current: dict | None = None) -> vol.Schema:
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=20.0, max=42.0, step=0.5, unit_of_measurement="°C")
     )
+    data[vol.Required(
+        CONF_POOLEX_ALWAYS_ON,
+        default=current.get(CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON),
+    )] = selector.BooleanSelector()
     data[vol.Optional(
         CONF_SOLAR_SENSOR, default=current.get(CONF_SOLAR_SENSOR, "")
     )] = selector.EntitySelector(

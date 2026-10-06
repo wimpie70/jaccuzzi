@@ -81,6 +81,8 @@ views:
             name: Einde
           - entity: number.jacuzzi_solar_surplus_threshold
             name: PV-drempel
+          - entity: select.jaccuzzi_watercare_mode
+            name: Watercare (piek = Super Savings)
 
       - type: entities
         title: Verbruik
@@ -105,6 +107,8 @@ views:
             name: Defrost actief
           - entity: number.pool_heat_pump_sampling_interval
             name: Meetinterval (C9)
+          - entity: switch.jacuzzi_poolex_always_on
+            name: Altijd aan (vorstbeveiliging)
 
       - type: entities
         title: Gecko — kuip

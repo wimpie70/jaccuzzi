@@ -36,8 +36,10 @@ from .const import (
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
     CONF_PEAK_START,
+    CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
@@ -427,6 +429,32 @@ class JacuzziController:
                     await self._on_peak_end(None)
 
         poolex_off = poolex.state == "off"
+
+        # Altijd-aan guard: buiten de piek mag de Poolex nooit 'off' zijn —
+        # vorstbeveiliging/telemetrie van de unit vereisen standby (heat).
+        # Een app-wijziging of misclick wordt zo teruggedraaid.
+        if (
+            self.conf.get(CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON)
+            and poolex_off
+            and not in_peak
+            and not self._peak_active
+        ):
+            _LOGGER.warning("Poolex stond op off — terug naar heat (always-on)")
+            if await self._async_call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
+            ):
+                self._notify_once(
+                    "poolex_autoon",
+                    True,
+                    "Jacuzzi: Poolex stond uit",
+                    "De warmtepomp stond op off — teruggezet naar heat "
+                    "(Poolex altijd aan staat aan).",
+                )
+        else:
+            self._notify_once("poolex_autoon", False, "", "")
+
         setpoint = _attr_float(poolex, "temperature", 38.0)
         tub_temp = _attr_float(jacuzzi, "current_temperature")
         compressor_on = _float(compressor) > 0

@@ -9,7 +9,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import CONF_POOLEX_CLIMATE, DOMAIN
+from .const import (
+    CONF_POOLEX_ALWAYS_ON,
+    CONF_POOLEX_CLIMATE,
+    DEFAULT_POOLEX_ALWAYS_ON,
+    DOMAIN,
+)
 
 
 async def async_setup_entry(
@@ -17,8 +22,8 @@ async def async_setup_entry(
     entry: JacuzziConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Poolex on/off switch."""
-    async_add_entities([JacuzziPoolexSwitch(entry)])
+    """Set up the Poolex on/off and always-on-guard switches."""
+    async_add_entities([JacuzziPoolexSwitch(entry), JacuzziAlwaysOnSwitch(entry)])
 
 
 class JacuzziPoolexSwitch(SwitchEntity):
@@ -77,3 +82,49 @@ class JacuzziPoolexSwitch(SwitchEntity):
     @callback
     def _async_update(self) -> None:
         self.async_write_ha_state()
+
+
+class JacuzziAlwaysOnSwitch(SwitchEntity):
+    """'Poolex altijd aan'-guard: buiten piek nooit hvac 'off' toestaan.
+
+    Aan = controller zet de unit terug op heat als iets/iemand hem uit
+    zet (vorstbeveiliging blijft dan werken). Schrijft naar options.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "poolex_always_on"
+    _attr_icon = "mdi:shield-check"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{CONF_POOLEX_ALWAYS_ON}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        """Guard aan? (options > data > default)."""
+        return bool(
+            self._entry.options.get(
+                CONF_POOLEX_ALWAYS_ON,
+                self._entry.data.get(
+                    CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON
+                ),
+            )
+        )
+
+    async def _set_option(self, value: bool) -> None:
+        """Sla op in options; de update-listener reloadt."""
+        options = dict(self._entry.options)
+        options[CONF_POOLEX_ALWAYS_ON] = value
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set_option(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set_option(False)

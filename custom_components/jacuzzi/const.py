@@ -21,6 +21,7 @@ CONF_SOLAR_SENSOR = "solar_sensor"
 CONF_SOLAR_MIN_W = "solar_min_watts"
 CONF_POOLEX_POWER_SENSOR = "poolex_power_sensor"
 CONF_JACUZZI_POWER_SENSOR = "jacuzzi_power_sensor"
+CONF_POOLEX_ALWAYS_ON = "poolex_always_on"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"
@@ -40,6 +41,7 @@ DEFAULT_PEAK_MODE = PEAK_MODE_SETPOINT
 DEFAULT_PEAK_SETPOINT = 4.0       # °C — laagste setpoint, unit idle
 DEFAULT_NORMAL_SETPOINT = 38.0    # °C — fallback als geen opgeslagen setpoint
 DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
+DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
 # Timers (seconds)
