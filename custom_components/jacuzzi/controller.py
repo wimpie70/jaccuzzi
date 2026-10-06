@@ -45,6 +45,7 @@ from .const import (
     FAILSAFE_DELAY_S,
     NO_COMPRESSOR_S,
     PEAK_MODE_OFF,
+    POOLEX_OFF_GUARD_S,
     PROBLEM_DELAY_S,
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
@@ -432,12 +433,14 @@ class JacuzziController:
 
         # Altijd-aan guard: buiten de piek mag de Poolex nooit 'off' zijn —
         # vorstbeveiliging/telemetrie van de unit vereisen standby (heat).
-        # Een app-wijziging of misclick wordt zo teruggedraaid.
-        if (
-            self.conf.get(CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON)
-            and poolex_off
-            and not in_peak
-            and not self._peak_active
+        # Debounce: de staat moet 60 s aanhouden, zodat een korte
+        # off-transitie (tuya-sync, app) geen pingpong geeft.
+        if self.conf.get(
+            CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON
+        ) and self._since_true(
+            "poolex_off_guard",
+            poolex_off and not in_peak and not self._peak_active,
+            POOLEX_OFF_GUARD_S,
         ):
             _LOGGER.warning("Poolex stond op off — terug naar heat (always-on)")
             if await self._async_call(
