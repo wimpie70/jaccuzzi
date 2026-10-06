@@ -105,11 +105,20 @@
       },
       "poolex_always_on": {
         "name": "Poolex always on"
+      },
+      "mix_pulse_enabled": {
+        "name": "Mixing pulse"
       }
     },
     "number": {
       "solar_min_watts": {
         "name": "Solar surplus threshold"
+      },
+      "mix_interval": {
+        "name": "Mixing interval"
+      },
+      "mix_pulse": {
+        "name": "Mixing pulse duration"
       }
     },
     "time": {

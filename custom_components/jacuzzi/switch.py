@@ -10,8 +10,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
 from .const import (
+    CONF_MIX_ENABLED,
     CONF_POOLEX_ALWAYS_ON,
     CONF_POOLEX_CLIMATE,
+    DEFAULT_MIX_ENABLED,
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
 )
@@ -23,7 +25,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Poolex on/off and always-on-guard switches."""
-    async_add_entities([JacuzziPoolexSwitch(entry), JacuzziAlwaysOnSwitch(entry)])
+    async_add_entities(
+        [
+            JacuzziPoolexSwitch(entry),
+            JacuzziAlwaysOnSwitch(entry),
+            JacuzziMixSwitch(entry),
+        ]
+    )
 
 
 class JacuzziPoolexSwitch(SwitchEntity):
@@ -121,6 +129,51 @@ class JacuzziAlwaysOnSwitch(SwitchEntity):
         """Sla op in options; de update-listener reloadt."""
         options = dict(self._entry.options)
         options[CONF_POOLEX_ALWAYS_ON] = value
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set_option(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set_option(False)
+
+
+class JacuzziMixSwitch(SwitchEntity):
+    """Meng-puls aan/uit: periodiek een massagepomp roeren tijdens stoken.
+
+    Aan = controller zet elke N min kort een massagepomp aan zolang de
+    compressor draait — mengt de gestratificeerde lagen zodat kuip- en
+    inlaat-sensor de echte bulk-temperatuur zien. Schrijft naar options.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "mix_pulse_enabled"
+    _attr_icon = "mdi:waves"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{CONF_MIX_ENABLED}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        """Meng-puls aan? (options > data > default)."""
+        return bool(
+            self._entry.options.get(
+                CONF_MIX_ENABLED,
+                self._entry.data.get(CONF_MIX_ENABLED, DEFAULT_MIX_ENABLED),
+            )
+        )
+
+    async def _set_option(self, value: bool) -> None:
+        """Sla op in options; de update-listener reloadt."""
+        options = dict(self._entry.options)
+        options[CONF_MIX_ENABLED] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
 
     async def async_turn_on(self, **kwargs) -> None:

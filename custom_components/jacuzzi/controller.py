@@ -30,6 +30,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_JACUZZI_CLIMATE,
+    CONF_MIX_ENABLED,
+    CONF_MIX_INTERVAL_MIN,
+    CONF_MIX_PULSE_S,
     CONF_NORMAL_SETPOINT,
     CONF_NOTIFY_SERVICE,
     CONF_PEAK_END,
@@ -39,12 +42,13 @@ from .const import (
     CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    DEFAULT_MIX_ENABLED,
+    DEFAULT_MIX_INTERVAL_MIN,
+    DEFAULT_MIX_PULSE_S,
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
-    MIX_INTERVAL_S,
-    MIX_PULSE_S,
     MIX_PUMPS,
     NO_COMPRESSOR_S,
     PEAK_MODE_OFF,
@@ -529,15 +533,23 @@ class JacuzziController:
         # zodat kuip- en inlaat-sensor de echte bulk-temp zien.
         # Alleen als de compressor draait én er circulatie is.
         now_mono = time.monotonic()
+        mix_enabled = self.conf.get(CONF_MIX_ENABLED, DEFAULT_MIX_ENABLED)
+        mix_interval = float(
+            self.conf.get(CONF_MIX_INTERVAL_MIN, DEFAULT_MIX_INTERVAL_MIN)
+        ) * 60
+        mix_pulse = float(self.conf.get(CONF_MIX_PULSE_S, DEFAULT_MIX_PULSE_S))
         if self._mix_entity is not None:
-            if now_mono >= self._mix_until:
+            if not mix_enabled or now_mono >= self._mix_until:
                 _LOGGER.info("Meng-puls klaar — %s uit", self._mix_entity)
                 await self._async_call(
                     "fan", "turn_off", {"entity_id": self._mix_entity}
                 )
                 self._mix_entity = None
-        elif compressor_on and pump_on and now_mono - self._mix_last >= (
-            MIX_INTERVAL_S
+        elif (
+            mix_enabled
+            and compressor_on
+            and pump_on
+            and now_mono - self._mix_last >= mix_interval
         ):
             target = MIX_PUMPS[self._mix_next]
             if self.hass.states.is_state(target, "on"):
@@ -549,12 +561,12 @@ class JacuzziController:
                 _LOGGER.info(
                     "Meng-puls: %s %d s aan (compressor actief)",
                     target,
-                    MIX_PULSE_S,
+                    mix_pulse,
                 )
                 self._mix_entity = target
+                self._mix_until = now_mono + mix_pulse
                 self._mix_next = (self._mix_next + 1) % len(MIX_PUMPS)
                 self._mix_last = now_mono
-                self._mix_until = now_mono + MIX_PULSE_S
 
         # Monitor 0b: water te koud maar hvac_mode staat op 'off' — de
         # warmtevraag wordt dan bewust onderdrukt en er gebeurt zichtbaar

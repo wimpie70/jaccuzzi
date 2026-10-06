@@ -22,6 +22,9 @@ CONF_SOLAR_MIN_W = "solar_min_watts"
 CONF_POOLEX_POWER_SENSOR = "poolex_power_sensor"
 CONF_JACUZZI_POWER_SENSOR = "jacuzzi_power_sensor"
 CONF_POOLEX_ALWAYS_ON = "poolex_always_on"
+CONF_MIX_ENABLED = "mix_enabled"
+CONF_MIX_INTERVAL_MIN = "mix_interval_min"
+CONF_MIX_PULSE_S = "mix_pulse_s"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"
@@ -46,8 +49,9 @@ SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
-MIX_INTERVAL_S = 1800   # elke 30 min tijdens het stoken
-MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
+DEFAULT_MIX_ENABLED = True      # meng-puls tijdens het stoken
+DEFAULT_MIX_INTERVAL_MIN = 30   # minuten tussen pulsen
+DEFAULT_MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
 
 # Timers (seconds)
 PUMP_RUNON_S = 180       # nadraaitijd pomp

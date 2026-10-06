@@ -131,6 +131,17 @@ cards:
         name: Watercare (piek = Super Savings)
 
   - type: entities
+    title: Meng-puls
+    show_header_toggle: false
+    entities:
+      - entity: switch.jacuzzi_meng_puls
+        name: Actief
+      - entity: number.jacuzzi_meng_interval
+        name: Interval
+      - entity: number.jacuzzi_meng_pulsduur
+        name: Pulsduur
+
+  - type: entities
     title: Verbruik
     show_header_toggle: false
     entities:

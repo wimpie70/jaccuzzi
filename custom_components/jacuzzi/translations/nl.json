@@ -105,11 +105,20 @@
       },
       "poolex_always_on": {
         "name": "Poolex altijd aan"
+      },
+      "mix_pulse_enabled": {
+        "name": "Meng-puls"
       }
     },
     "number": {
       "solar_min_watts": {
         "name": "PV-overschot drempel"
+      },
+      "mix_interval": {
+        "name": "Meng-interval"
+      },
+      "mix_pulse": {
+        "name": "Meng-pulsduur"
       }
     },
     "time": {
