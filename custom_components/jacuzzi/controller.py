@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timedelta
 
 import homeassistant.helpers.entity_registry as er
+from homeassistant.loader import async_get_integration
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -37,6 +38,7 @@ from .const import (
     CONF_PEAK_START,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
     NO_COMPRESSOR_S,
@@ -126,11 +128,13 @@ class JacuzziController:
             )
         )
 
-    async def _async_call(self, domain: str, service: str, data: dict) -> None:
+    async def _async_call(self, domain: str, service: str, data: dict) -> bool:
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
+            return True
         except Exception as err:  # noqa: BLE001 - log en ga door
             _LOGGER.error("%s.%s faalde: %s", domain, service, err)
+            return False
 
     def _maybe_reload_gecko(self) -> None:
         """Reload de Gecko config-entry als die in een dode sessie hangt.
@@ -161,6 +165,11 @@ class JacuzziController:
 
     async def async_start(self) -> None:
         """Attach all listeners."""
+        integration = await async_get_integration(self.hass, DOMAIN)
+        _LOGGER.info(
+            "Jacuzzi controller gestart — versie %s",
+            integration.version or "onbekend",
+        )
         watched = [
             self.conf["poolex_climate"],
             self.conf["jacuzzi_climate"],
@@ -217,20 +226,22 @@ class JacuzziController:
 
     # --- peak block ----------------------------------------------------
 
-    async def _set_watercare(self, key: str) -> None:
+    async def _set_watercare(self, key: str) -> bool:
         """Selecteer een watercare-optie, tolerant voor hoofdletters/spaties.
 
-        De geckoal-select gebruikt Title-Case opties ('Super Savings');
-        gebruikers/config kunnen 'SUPER_SAVINGS' doorgeven. Match tegen de
-        werkelijke options van de entity.
+        De geckoal-select gebruikt Title-Case opties ('Super Savings') of
+        SCREAMING ('SUPER_SAVINGS') afhankelijk van de versie; match tegen
+        de werkelijke options van de entity. False = retry later.
         """
         want = str(self.conf.get(key, "")).strip()
-        option = want
         sel = self._state("watercare_select")
         if sel is None or sel.state in ("unavailable", "unknown"):
             _LOGGER.warning("Watercare-select unavailable — %r overgeslagen", want)
-            return
+            return False
         options = sel.attributes.get("options") or []
+        if not options:
+            _LOGGER.warning("Watercare-options nog niet geladen — %r uitgesteld", want)
+            return False
         match = next(
             (
                 o
@@ -244,14 +255,13 @@ class JacuzziController:
             _LOGGER.warning(
                 "Watercare-optie %r niet gevonden; geldig: %s", want, options
             )
-        else:
-            option = match
-        await self._async_call(
+            return False
+        return await self._async_call(
             "select",
             "select_option",
             {
                 "entity_id": self.conf["watercare_select"],
-                "option": option,
+                "option": match,
             },
         )
 
@@ -268,25 +278,28 @@ class JacuzziController:
             # _peak_active blijft False -> evaluate probeert het opnieuw
             _LOGGER.warning("Piekblokkade AAN uitgesteld — Poolex unavailable")
             return
+        ok = True
         if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
-            await self._async_call(
+            ok = await self._async_call(
                 "climate",
                 "set_hvac_mode",
                 {"entity_id": self.conf["poolex_climate"], "hvac_mode": "off"},
             )
         else:
             # clamp: de unit accepteert in heat-mode min. ~15 °C
-            # (tuya-local validatie), ook al is 4 °C het DP-minimum
+            # (tuya-local validatie), ook al is 4 °C het DP-minimum.
+            # min_temp-attr kan bij een herstelde state ontbreken ->
+            # val terug op de bekende unit-floor (15 °C), niet op 4 °C.
             peak = max(
                 self.conf.get(CONF_PEAK_SETPOINT, 4.0),
-                _attr_float(poolex, "min_temp", 4.0),
+                _attr_float(poolex, "min_temp", 15.0),
             )
             current = _attr_float(poolex, "temperature", 38.0)
             # niet overschrijven als we midden in de piek (her)starten:
             # vergelijk met het GECLAMPTE piek-niveau, niet de config
             if current > peak + 0.5:
                 self._peak_saved_setpoint = current
-            await self._async_call(
+            ok = await self._async_call(
                 "climate",
                 "set_temperature",
                 {
@@ -294,8 +307,9 @@ class JacuzziController:
                     "temperature": peak,
                 },
             )
-        await self._set_watercare("watercare_peak")
-        self._peak_active = True
+        ok = await self._set_watercare("watercare_peak") and ok
+        # False -> evaluate roept _on_peak_start de volgende tick opnieuw
+        self._peak_active = ok
 
     async def _on_peak_end(self, _now) -> None:
         """Piekblokkade UIT: setpoint/mode herstellen + Watercare normaal."""
@@ -305,8 +319,9 @@ class JacuzziController:
             # _peak_active blijft True -> evaluate probeert het opnieuw
             _LOGGER.warning("Piekblokkade UIT uitgesteld — Poolex unavailable")
             return
+        ok = True
         if self.conf.get(CONF_PEAK_MODE) == PEAK_MODE_OFF:
-            await self._async_call(
+            ok = await self._async_call(
                 "climate",
                 "set_hvac_mode",
                 {"entity_id": self.conf["poolex_climate"], "hvac_mode": "heat"},
@@ -317,7 +332,7 @@ class JacuzziController:
                 if self._peak_saved_setpoint is not None
                 else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
             )
-            await self._async_call(
+            ok = await self._async_call(
                 "climate",
                 "set_temperature",
                 {
@@ -325,9 +340,11 @@ class JacuzziController:
                     "temperature": restore,
                 },
             )
-            self._peak_saved_setpoint = None
-        await self._set_watercare("watercare_normal")
-        self._peak_active = False
+            if ok:
+                self._peak_saved_setpoint = None
+        ok = await self._set_watercare("watercare_normal") and ok
+        # False -> evaluate roept _on_peak_end de volgende tick opnieuw
+        self._peak_active = not ok
 
     # --- main evaluation -----------------------------------------------
 
@@ -399,7 +416,7 @@ class JacuzziController:
                 cur = _attr_float(poolex, "temperature", 99.0)
                 peak_sp = max(
                     self.conf.get(CONF_PEAK_SETPOINT, 4.0),
-                    _attr_float(poolex, "min_temp", 4.0),
+                    _attr_float(poolex, "min_temp", 15.0),
                 )
                 if cur <= peak_sp + 0.5:
                     _LOGGER.warning(
@@ -468,6 +485,23 @@ class JacuzziController:
             )
             self.pump_by_us = False
             self._compressor_recently_on = False
+
+        # Monitor 0b: water te koud maar hvac_mode staat op 'off' — de
+        # warmtevraag wordt dan bewust onderdrukt en er gebeurt zichtbaar
+        # niets. Meld dat ipv stil niets te doen.
+        self._notify_once(
+            "poolex_off_cold",
+            self._since_true(
+                "poolex_off_cold",
+                poolex_off
+                and tub_temp < setpoint - self.conf["temp_margin"]
+                and not self._peak_active,
+                NO_COMPRESSOR_S,
+            ),
+            "Jacuzzi: Poolex staat uit",
+            f"Het water is {tub_temp} °C maar de warmtepomp staat op off — "
+            "zet hem op heat (switch Poolex aan/uit) om weer te stoken.",
+        )
 
         # Monitor 1: echte fault-bit van de unit
         problem_active = problem is not None and problem.state == "on"

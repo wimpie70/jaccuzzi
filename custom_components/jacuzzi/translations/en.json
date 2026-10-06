@@ -21,7 +21,9 @@
           "peak_setpoint": "Setpoint during peak",
           "normal_setpoint": "Setpoint after peak (fallback)",
           "solar_sensor": "Solar power sensor (optional — early peak end)",
-          "solar_min_watts": "Solar surplus threshold (W)"
+          "solar_min_watts": "Solar surplus threshold (W)",
+          "poolex_power_sensor": "Poolex power sensor (optional — smart plug)",
+          "jacuzzi_power_sensor": "Jacuzzi power sensor (optional — smart plug)"
         }
       }
     },
@@ -50,7 +52,9 @@
           "peak_setpoint": "Setpoint during peak",
           "normal_setpoint": "Setpoint after peak (fallback)",
           "solar_sensor": "Solar power sensor (optional — early peak end)",
-          "solar_min_watts": "Solar surplus threshold (W)"
+          "solar_min_watts": "Solar surplus threshold (W)",
+          "poolex_power_sensor": "Poolex power sensor (optional — smart plug)",
+          "jacuzzi_power_sensor": "Jacuzzi power sensor (optional — smart plug)"
         }
       }
     }
@@ -67,6 +71,12 @@
     "sensor": {
       "tub_temperature": {
         "name": "Tub temperature"
+      },
+      "poolex_energy": {
+        "name": "Poolex energy"
+      },
+      "jacuzzi_energy": {
+        "name": "Energy"
       }
     },
     "switch": {

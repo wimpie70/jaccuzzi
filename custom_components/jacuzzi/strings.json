@@ -19,7 +19,11 @@
           "temp_margin": "Temperatuurmarge (hysterese)",
           "peak_mode": "Piekblokkade methode",
           "peak_setpoint": "Setpoint tijdens piek",
-          "normal_setpoint": "Setpoint na piek (fallback)"
+          "normal_setpoint": "Setpoint na piek (fallback)",
+          "solar_sensor": "Zonnevermogen-sensor (optioneel — vervroegd piek-einde)",
+          "solar_min_watts": "PV-overschot drempel (W)",
+          "poolex_power_sensor": "Poolex vermogenssensor (optioneel — smart plug)",
+          "jacuzzi_power_sensor": "Jacuzzi vermogenssensor (optioneel — smart plug)"
         }
       }
     },
@@ -46,7 +50,11 @@
           "temp_margin": "Temperatuurmarge (hysterese)",
           "peak_mode": "Piekblokkade methode",
           "peak_setpoint": "Setpoint tijdens piek",
-          "normal_setpoint": "Setpoint na piek (fallback)"
+          "normal_setpoint": "Setpoint na piek (fallback)",
+          "solar_sensor": "Zonnevermogen-sensor (optioneel — vervroegd piek-einde)",
+          "solar_min_watts": "PV-overschot drempel (W)",
+          "poolex_power_sensor": "Poolex vermogenssensor (optioneel — smart plug)",
+          "jacuzzi_power_sensor": "Jacuzzi vermogenssensor (optioneel — smart plug)"
         }
       }
     }
@@ -63,11 +71,30 @@
     "sensor": {
       "tub_temperature": {
         "name": "Kuip-temperatuur"
+      },
+      "poolex_energy": {
+        "name": "Poolex verbruik"
+      },
+      "jacuzzi_energy": {
+        "name": "Verbruik"
       }
     },
     "switch": {
       "poolex_power": {
         "name": "Poolex aan/uit"
+      }
+    },
+    "number": {
+      "solar_min_watts": {
+        "name": "PV-overschot drempel"
+      }
+    },
+    "time": {
+      "peak_start": {
+        "name": "Piekblokkade start"
+      },
+      "peak_end": {
+        "name": "Piekblokkade einde"
       }
     }
   }

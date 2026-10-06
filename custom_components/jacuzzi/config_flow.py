@@ -20,6 +20,8 @@ from .const import (
     CONF_NORMAL_SETPOINT,
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
+    CONF_JACUZZI_POWER_SENSOR,
+    CONF_POOLEX_POWER_SENSOR,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
     CONF_TEMP_MARGIN,
@@ -132,6 +134,16 @@ def _schema(current: dict | None = None) -> vol.Schema:
         CONF_SOLAR_MIN_W, default=current.get(CONF_SOLAR_MIN_W, DEFAULT_SOLAR_MIN_W)
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=500, max=10000, step=100, unit_of_measurement="W")
+    )
+    data[vol.Optional(
+        CONF_POOLEX_POWER_SENSOR, default=current.get(CONF_POOLEX_POWER_SENSOR, "")
+    )] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain="sensor", device_class="power")
+    )
+    data[vol.Optional(
+        CONF_JACUZZI_POWER_SENSOR, default=current.get(CONF_JACUZZI_POWER_SENSOR, "")
+    )] = selector.EntitySelector(
+        selector.EntitySelectorConfig(domain="sensor", device_class="power")
     )
     return vol.Schema(data)
 

@@ -19,6 +19,8 @@ CONF_PEAK_SETPOINT = "peak_setpoint"
 CONF_NORMAL_SETPOINT = "normal_setpoint"
 CONF_SOLAR_SENSOR = "solar_sensor"
 CONF_SOLAR_MIN_W = "solar_min_watts"
+CONF_POOLEX_POWER_SENSOR = "poolex_power_sensor"
+CONF_JACUZZI_POWER_SENSOR = "jacuzzi_power_sensor"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"
