@@ -150,6 +150,26 @@ cards:
         name: Altijd aan (vorstbeveiliging)
 
   - type: entities
+    title: Verbruik
+    show_header_toggle: false
+    entities:
+      - entity: sensor.jacuzzi_poolex_energy
+        name: Poolex (kWh)
+      - entity: sensor.jacuzzi_energy
+        name: Jacuzzi (kWh)
+
+  - type: entities
+    title: Meng-puls
+    show_header_toggle: false
+    entities:
+      - entity: switch.jacuzzi_mixing_pulse
+        name: Actief
+      - entity: number.jacuzzi_mixing_interval
+        name: Interval
+      - entity: number.jacuzzi_mixing_pulse_duration
+        name: Pulsduur
+
+  - type: entities
     title: Gecko — kuip
     show_header_toggle: false
     entities:
@@ -165,24 +185,4 @@ cards:
         name: Watercare
       - entity: binary_sensor.jaccuzzi_spa_status
         name: Spa status
-
-  - type: entities
-    title: Meng-puls
-    show_header_toggle: false
-    entities:
-      - entity: switch.jacuzzi_mixing_pulse
-        name: Actief
-      - entity: number.jacuzzi_mixing_interval
-        name: Interval
-      - entity: number.jacuzzi_mixing_pulse_duration
-        name: Pulsduur
-
-  - type: entities
-    title: Verbruik
-    show_header_toggle: false
-    entities:
-      - entity: sensor.jacuzzi_poolex_energy
-        name: Poolex (kWh)
-      - entity: sensor.jacuzzi_energy
-        name: Jacuzzi (kWh)
 
