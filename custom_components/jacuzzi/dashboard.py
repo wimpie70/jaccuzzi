@@ -58,8 +58,18 @@ async def async_setup_dashboard(hass: HomeAssistant) -> None:
         from homeassistant.components import frontend
         from homeassistant.components.lovelace.dashboard import LovelaceYAML
 
-        # absolute filename wordt door hass.config.path() ongemoeid gelaten
-        yaml_dash = LovelaceYAML(hass, URL_PATH, {"filename": YAML_FILE})
+        # absolute filename wordt door hass.config.path() ongemoeid gelaten.
+        # Volledige conf meegeven: de dashboards-lijst (Settings ->
+        # Dashboards) en de sidebar lezen title/icon/show_in_sidebar hieruit
+        yaml_conf = {
+            "mode": "yaml",
+            "title": TITLE,
+            "icon": ICON,
+            "show_in_sidebar": True,
+            "require_admin": False,
+            "filename": YAML_FILE,
+        }
+        yaml_dash = LovelaceYAML(hass, URL_PATH, yaml_conf)
         dashboards[URL_PATH] = yaml_dash
         yaml_dashboards = getattr(lovelace, "yaml_dashboards", None)
         if isinstance(yaml_dashboards, dict):
