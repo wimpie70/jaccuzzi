@@ -39,8 +39,8 @@ cards:
             name: Fault
 
   - type: history-graph
-    title: Temperaturen (2 dagen)
-    hours_to_show: 48
+    title: Temperaturen (24 uur)
+    hours_to_show: 24
     entities:
       - entity: sensor.jacuzzi_tub_temperature
         name: Kuip
@@ -56,8 +56,8 @@ cards:
         name: Buiten
 
   - type: history-graph
-    title: Aan/uit (2 dagen)
-    hours_to_show: 48
+    title: Aan/uit (24 uur)
+    hours_to_show: 24
     entities:
       - entity: fan.jaccuzzi_waterfall
         name: Circulatie
