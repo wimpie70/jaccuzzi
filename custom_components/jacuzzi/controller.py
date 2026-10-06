@@ -483,11 +483,13 @@ class JacuzziController:
             self._since.pop("comp_idle", None)
 
         # FAILSAFE: compressor draait maar pomp staat uit -> restwarmte
-        # kan niet weg -> d1. Pomp direct weer aan.
+        # kan niet weg -> d1. Pomp direct weer aan. Alleen ingrijpen als
+        # de pomp echt 'off' is — unavailable/unknown (restart, cloud-
+        # hapering) is geen bewijs dat er geen flow is.
         compressor_running = self._since_true(
             "comp_running", compressor_on, FAILSAFE_DELAY_S
         )
-        if compressor_running and not pump_on:
+        if compressor_running and pump.state == "off":
             _LOGGER.warning("Compressor draait zonder flow — pomp aan")
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
