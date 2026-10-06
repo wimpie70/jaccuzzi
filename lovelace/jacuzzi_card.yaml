@@ -32,8 +32,13 @@ cards:
       teruggezet naar heat — vorstbeveiliging van de unit werkt alleen in
       standby. Zet deze switch uit bij onderhoud/winterstalling.
 
-      **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
-      De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
+          **Failsafe**: compressor aan zonder flow → pomp direct weer aan.
+          De hardware flow-beveiliging van de Poolex blijft altijd achtervang.
+
+          **Meng-puls**: zolang de compressor stookt gaat elke 30 min kort
+          (60 s) een massagepomp aan — afwisselend pomp 1 en 2. Mengt de
+          warme/koude lagen zodat kuip- en inlaat-sensor de echte
+          bulk-temperatuur zien en de warmtevraag niet te vroeg stopt.
 
   - type: horizontal-stack
     cards:

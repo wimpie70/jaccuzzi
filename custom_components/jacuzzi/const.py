@@ -44,6 +44,11 @@ DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
 DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
+# Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
+MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
+MIX_INTERVAL_S = 1800   # elke 30 min tijdens het stoken
+MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
+
 # Timers (seconds)
 PUMP_RUNON_S = 180       # nadraaitijd pomp
 FAILSAFE_DELAY_S = 15    # compressor aan + pomp uit -> pomp aan

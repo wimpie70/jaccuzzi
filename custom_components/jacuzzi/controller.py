@@ -43,6 +43,9 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
+    MIX_INTERVAL_S,
+    MIX_PULSE_S,
+    MIX_PUMPS,
     NO_COMPRESSOR_S,
     PEAK_MODE_OFF,
     POOLEX_OFF_GUARD_S,
@@ -94,6 +97,10 @@ class JacuzziController:
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._last_gecko_reload = 0.0
+        self._mix_last = 0.0             # monotonic ts laatste meng-puls
+        self._mix_until = 0.0            # monotonic ts einde lopende puls
+        self._mix_next = 0               # index in MIX_PUMPS (wisselend)
+        self._mix_entity: str | None = None  # pomp die nu pulseert
         self._peak_active = False        # piek-blok is toegepast
         self._early_restored = False     # PV-einde al gedaan dit venster
         self._startup_restore_checked = False  # eenmalig: achtergebleven
@@ -516,6 +523,38 @@ class JacuzziController:
             )
             self.pump_by_us = False
             self._compressor_recently_on = False
+
+        # Meng-puls: tijdens het stoken afwisselend een massagepomp
+        # kort aanzetten — roert de gestratificeerde lagen door elkaar
+        # zodat kuip- en inlaat-sensor de echte bulk-temp zien.
+        # Alleen als de compressor draait én er circulatie is.
+        now_mono = time.monotonic()
+        if self._mix_entity is not None:
+            if now_mono >= self._mix_until:
+                _LOGGER.info("Meng-puls klaar — %s uit", self._mix_entity)
+                await self._async_call(
+                    "fan", "turn_off", {"entity_id": self._mix_entity}
+                )
+                self._mix_entity = None
+        elif compressor_on and pump_on and now_mono - self._mix_last >= (
+            MIX_INTERVAL_S
+        ):
+            target = MIX_PUMPS[self._mix_next]
+            if self.hass.states.is_state(target, "on"):
+                # al aan (gebruiker/filter) — mengt toch al, teller reset
+                self._mix_last = now_mono
+            elif await self._async_call(
+                "fan", "turn_on", {"entity_id": target}
+            ):
+                _LOGGER.info(
+                    "Meng-puls: %s %d s aan (compressor actief)",
+                    target,
+                    MIX_PULSE_S,
+                )
+                self._mix_entity = target
+                self._mix_next = (self._mix_next + 1) % len(MIX_PUMPS)
+                self._mix_last = now_mono
+                self._mix_until = now_mono + MIX_PULSE_S
 
         # Monitor 0b: water te koud maar hvac_mode staat op 'off' — de
         # warmtevraag wordt dan bewust onderdrukt en er gebeurt zichtbaar
