@@ -74,6 +74,11 @@
         "name": "Poolex power"
       }
     },
+    "number": {
+      "solar_min_watts": {
+        "name": "Solar surplus threshold"
+      }
+    },
     "time": {
       "peak_start": {
         "name": "Peak start"

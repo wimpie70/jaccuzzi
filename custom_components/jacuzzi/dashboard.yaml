@@ -79,6 +79,8 @@ views:
             name: Start
           - entity: time.jacuzzi_peak_end
             name: Einde
+          - entity: number.jacuzzi_solar_surplus_threshold
+            name: PV-drempel
 
       - type: entities
         title: Poolex — sturing

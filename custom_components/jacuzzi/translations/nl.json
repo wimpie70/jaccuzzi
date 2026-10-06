@@ -74,6 +74,11 @@
         "name": "Poolex aan/uit"
       }
     },
+    "number": {
+      "solar_min_watts": {
+        "name": "PV-overschot drempel"
+      }
+    },
     "time": {
       "peak_start": {
         "name": "Piekblokkade start"
