@@ -68,6 +68,9 @@
       },
       "warmtevraag": {
         "name": "Heat demand"
+      },
+      "flow": {
+        "name": "Water flow"
       }
     },
     "sensor": {

@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import DOMAIN
+from .const import CONF_PUMP_FAN, DOMAIN
 
 
 async def async_setup_entry(
@@ -24,6 +24,7 @@ async def async_setup_entry(
         [
             JacuzziFlagBinarySensor(entry),
             JacuzziDemandBinarySensor(entry),
+            JacuzziFlowBinarySensor(entry),
         ]
     )
 
@@ -36,6 +37,7 @@ class _JacuzziBinarySensor(BinarySensorEntity):
 
     def __init__(self, entry: JacuzziConfigEntry) -> None:
         """Bind to the controller."""
+        self._entry = entry
         self._controller = entry.runtime_data
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
@@ -87,3 +89,28 @@ class JacuzziDemandBinarySensor(_JacuzziBinarySensor):
     def is_on(self) -> bool:
         """True when tub temp is below the Poolex setpoint minus margin."""
         return self._controller.warmtevraag
+
+
+class JacuzziFlowBinarySensor(_JacuzziBinarySensor):
+    """Flow-proxy: de circulatiepomp is de enige flow-bron door de unit.
+
+    De Poolex publiceert geen flow-sensor (flow-schakelaar zit niet in
+    het DP-schema) — 'pomp aan' is daarom de beste benadering.
+    """
+
+    _attr_translation_key = "flow"
+    _attr_icon = "mdi:waves"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Set unique id."""
+        super().__init__(entry)
+        self._attr_unique_id = f"{entry.entry_id}_flow"
+
+    @property
+    def is_on(self) -> bool | None:
+        """True wanneer de circulatiepomp draait."""
+        conf = {**self._entry.data, **self._entry.options}
+        state = self.hass.states.get(conf[CONF_PUMP_FAN])
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None
+        return state.state == "on"

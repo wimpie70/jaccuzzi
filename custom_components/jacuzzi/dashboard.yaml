@@ -67,6 +67,8 @@ views:
             name: Pomp door HA
           - entity: binary_sensor.jacuzzi_heat_demand
             name: Warmtevraag
+          - entity: binary_sensor.jacuzzi_water_flow
+            name: Flow (pomp)
           - entity: binary_sensor.pool_heat_pump_defrost
             name: Defrost
           - entity: sensor.pool_heat_pump_compressor_duty_cycle
