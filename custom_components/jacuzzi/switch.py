@@ -196,7 +196,8 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
 
     Aan = bewaar de huidige standen (Poolex hvac-mode/setpoint, watercare)
     in options en zet alles in onderhoud: Poolex off, watercare op de
-    away-stand (of piek-stand als die optie er niet is), circulatie- en
+    standby/away-stand (of piek-stand als geen van beide bestaat),
+    circulatie- en
     massagepompen uit. De controller
     slaat dan álle acties over (incl. failsafe en altijd-aan guard).
     Uit = opgeslagen standen terugzetten; de controller hervat.
@@ -255,13 +256,19 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
             "set_hvac_mode",
             {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": "off"},
         )
-        # Watercare naar 'away' als de select die optie aanbiedt (schort
-        # verwarming én filtercycli volledig op), anders de piek-stand.
+        # Watercare naar standby-achtige stand: zoek in de opties van de
+        # select op voorkeursvolgorde ('standby' schort alles op, 'away'
+        # houdt alleen vorstbewaking aan), anders de piek-stand.
         options_list = (
             [] if watercare is None else watercare.attributes.get("options", [])
         )
         standby = next(
-            (o for o in options_list if "away" in o.lower()),
+            (
+                o
+                for pref in ("standby", "away")
+                for o in options_list
+                if pref in o.lower()
+            ),
             conf[CONF_WATERCARE_PEAK],
         )
         await self._call(
