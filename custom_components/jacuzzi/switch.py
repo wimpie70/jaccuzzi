@@ -252,24 +252,6 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
         conf = self._conf()
         poolex = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
         watercare = self.hass.states.get(conf[CONF_WATERCARE_SELECT])
-        options = dict(self._entry.options)
-        options[CONF_MAINT_SAVED] = {
-            "poolex_mode": None if poolex is None else poolex.state,
-            "poolex_setpoint": (
-                None
-                if poolex is None
-                else poolex.attributes.get("temperature")
-            ),
-            "watercare": None if watercare is None else watercare.state,
-        }
-        options[CONF_MAINTENANCE] = True
-        # eerst de vlag: de herladende controller mag niets terugvechten
-        self.hass.config_entries.async_update_entry(self._entry, options=options)
-        await self._call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": "off"},
-        )
         # Watercare naar standby-achtige stand: zoek in de opties van de
         # select op voorkeursvolgorde ('standby' schort alles op, 'away'
         # houdt alleen vorstbewaking aan), anders de piek-stand.
@@ -284,6 +266,26 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 if pref in o.lower()
             ),
             conf[CONF_WATERCARE_PEAK],
+        )
+        options = dict(self._entry.options)
+        options[CONF_MAINT_SAVED] = {
+            "poolex_mode": None if poolex is None else poolex.state,
+            "poolex_setpoint": (
+                None
+                if poolex is None
+                else poolex.attributes.get("temperature")
+            ),
+            "watercare": None if watercare is None else watercare.state,
+            # de gekozen standby-stand: handhaven tijdens onderhoud
+            "standby_mode": standby,
+        }
+        options[CONF_MAINTENANCE] = True
+        # eerst de vlag: de herladende controller mag niets terugvechten
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+        await self._call(
+            "climate",
+            "set_hvac_mode",
+            {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": "off"},
         )
         await self._call(
             "select",

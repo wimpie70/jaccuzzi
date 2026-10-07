@@ -30,6 +30,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_JACUZZI_CLIMATE,
+    CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
     CONF_MIX_ENABLED,
     CONF_MIX_INTERVAL_MIN,
@@ -243,13 +244,17 @@ class JacuzziController:
     # --- peak block ----------------------------------------------------
 
     async def _set_watercare(self, key: str) -> bool:
+        """Watercare-optie uit een conf-sleutel zetten."""
+        return await self._set_watercare_opt(self.conf.get(key, ""))
+
+    async def _set_watercare_opt(self, want) -> bool:
         """Selecteer een watercare-optie, tolerant voor hoofdletters/spaties.
 
         De geckoal-select gebruikt Title-Case opties ('Super Savings') of
         SCREAMING ('SUPER_SAVINGS') afhankelijk van de versie; match tegen
         de werkelijke options van de entity. False = retry later.
         """
-        want = str(self.conf.get(key, "")).strip()
+        want = str(want).strip()
         sel = self._state("watercare_select")
         if sel is None or sel.state in ("unavailable", "unknown"):
             _LOGGER.warning("Watercare-select unavailable — %r overgeslagen", want)
@@ -405,9 +410,19 @@ class JacuzziController:
             # (~40 s) om water te samplen / vorst te bewaken. Die laten
             # we met rust (anders pingpong: hij aan, wij uit, hij aan).
             # Pas als de pomp langer dan de grace-periode aanhoudt —
-            # geen check-cyclus meer — zetten we hem terug en waarschuwen.
+            # geen check-cyclus meer — zetten we hem terug. De melding
+            # gaat wél meteen weg zodra de pomp aan gaat.
+            pump_on = pump.state == "on"
+            self._notify_once(
+                "maintenance_pump",
+                pump_on,
+                "Jacuzzi: pomp aan tijdens onderhoud",
+                "De Gecko startte een circulatie-cyclus. Korte check-runs "
+                "laten we; > 90 s wordt hij teruggezet. Bij een lege kuip: "
+                "groep uitschakelen in de meterkast.",
+            )
             if self._since_true(
-                "maint_pump_grace", pump.state == "on", MAINT_PUMP_GRACE_S
+                "maint_pump_grace", pump_on, MAINT_PUMP_GRACE_S
             ):
                 _LOGGER.warning(
                     "Circulatiepomp > %d s aan tijdens onderhoud — uitgezet. "
@@ -417,16 +432,29 @@ class JacuzziController:
                 await self._async_call(
                     "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
                 )
-                self._notify_once(
-                    "maintenance_pump",
-                    True,
-                    "Jacuzzi: pomp liep tijdens onderhoud",
-                    "De circulatiepomp stond aan tijdens onderhoud — "
-                    "teruggezet. Bij een lege kuip: groep uitschakelen in "
-                    "de meterkast, interne cycli kan HA niet blokkeren.",
+            # Watercare handhaven: de pack (of iemand) kan 'm verzetten
+            # tijdens een check-cyclus — na de grace-periode terug op de
+            # bewaarde standby-stand.
+            saved = self.conf.get(CONF_MAINT_SAVED) or {}
+            standby = saved.get("standby_mode")
+            sel = self._state("watercare_select")
+            if (
+                standby
+                and sel is not None
+                and sel.state not in ("unavailable", "unknown")
+                and sel.state != standby
+                and self._since_true(
+                    "maint_wc_grace", True, MAINT_PUMP_GRACE_S
                 )
-            else:
-                self._notify_once("maintenance_pump", False, "", "")
+            ):
+                _LOGGER.warning(
+                    "Watercare stond op %s tijdens onderhoud — terug naar %s",
+                    sel.state,
+                    standby,
+                )
+                await self._set_watercare_opt(standby)
+            elif standby and sel is not None and sel.state == standby:
+                self._since_true("maint_wc_grace", False, 0)
             return
 
         # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers
