@@ -52,6 +52,11 @@ TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K
 # langer dan ~45 min dempt hij echte verandering te veel.
 HEATING_WINDOW_S = 30 * 60
 HEATING_MIN_S = 10 * 60  # minimaal zoveel data voor een betrouwbare helling
+# Alleen sampelen ná een meng-puls (circulatie loopt door): tijdens de
+# puls meet de inlaat de overgang; ~15-180 s erna is de bulk gemengd.
+MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
+MIX_DELAY_S = 15
+MIXED_VALID_S = 180
 
 
 async def async_setup_entry(
@@ -418,10 +423,26 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         }
         self._samples: deque[tuple[float, float]] = deque()
         self._kw: float | None = None
+        self._last_mix = 0.0  # monotonic ts: massagepomp aan/liep net
 
-    def _bulk_temp(self) -> float | None:
-        """Inlaat-temp (DP16) — alleen valide bij lopende circulatie."""
+    def _bulk_temp(self, now: float) -> float | None:
+        """Inlaat-temp (DP16) rond een meng-puls bij lopende circulatie.
+
+        Tussen pulsen aanzuigt de wisselaar mogelijk een gestratificeerde
+        laag — dan is de inlaat géén bulk-temp meer.
+        """
         conf = {**self._entry.data, **self._entry.options}
+        mixing = False
+        for ent in MIX_PUMPS:
+            st = self.hass.states.get(ent)
+            if st is not None and st.state == "on":
+                mixing = True
+                break
+        if mixing:
+            self._last_mix = now  # eindt pas als de puls stopt
+        since_mix = now - self._last_mix
+        if not (MIX_DELAY_S <= since_mix <= MIXED_VALID_S):
+            return None
         pump = self.hass.states.get(conf[CONF_PUMP_FAN])
         if pump is None or pump.state != "on":
             return None
@@ -459,8 +480,8 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         self.async_write_ha_state()
 
     def _sample(self) -> None:
-        temp = self._bulk_temp()
         now = time.monotonic()
+        temp = self._bulk_temp(now)
         if temp is not None:
             # Alleen toevoegen als de waarde veranderde — anders wordt
             # de regressie door dubbele punten vertekend.
