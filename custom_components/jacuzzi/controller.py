@@ -398,9 +398,8 @@ class JacuzziController:
         # Niet vechten met failsafe/altijd-aan/piek/menging; de gebruiker
         # bepaalt (bv. water verversen). Monitors hierboven lopen door.
         if self.conf.get(CONF_MAINTENANCE):
-            if self.warmtevraag:
-                self.warmtevraag = False
-                async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            self.warmtevraag = False
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             return
 
         # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers

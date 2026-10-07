@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
@@ -90,13 +91,26 @@ class JacuzziPoolexSwitch(SwitchEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe op controller-updates."""
+        """Subscribe op controller-updates én op de echte climate-state.
+
+        De climate kan ook buiten de controller om veranderen (onderhoud-
+        modus, tuya-app) — dan is SIGNAL_UPDATE niet genoeg.
+        """
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
+        )
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._poolex_entity(), self._async_state_change
+            )
         )
 
     @callback
     def _async_update(self) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def _async_state_change(self, event) -> None:
         self.async_write_ha_state()
 
 
