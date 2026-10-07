@@ -30,6 +30,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_JACUZZI_CLIMATE,
+    CONF_MAINTENANCE,
     CONF_MIX_ENABLED,
     CONF_MIX_INTERVAL_MIN,
     CONF_MIX_PULSE_S,
@@ -392,6 +393,15 @@ class JacuzziController:
             self._maybe_reload_gecko()
         if None in (poolex, jacuzzi, pump, compressor):
             return  # integraties nog niet klaar
+
+        # Onderhoudsmodus: alles handmatig — de controller doet niets.
+        # Niet vechten met failsafe/altijd-aan/piek/menging; de gebruiker
+        # bepaalt (bv. water verversen). Monitors hierboven lopen door.
+        if self.conf.get(CONF_MAINTENANCE):
+            if self.warmtevraag:
+                self.warmtevraag = False
+                async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            return
 
         # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers
         # vertrouwen (die missen als HA down/crasht op dat moment) maar op

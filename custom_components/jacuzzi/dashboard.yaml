@@ -38,6 +38,16 @@ views:
           warme/koude lagen zodat kuip- en inlaat-sensor de echte
           bulk-temperatuur zien en de warmtevraag niet te vroeg stopt.
 
+          **Onderhoud**: zet alle automatiseringen uit — Poolex off,
+          watercare op piek-stand, pompen uit. Handig bij water verversen.
+          De oude standen worden bij uitschakelen teruggezet.
+
+      - type: entities
+        title: Onderhoud
+        entities:
+          - entity: switch.jacuzzi_maintenance
+            name: Onderhoudsmodus
+
       - type: horizontal-stack
         cards:
           - type: thermostat

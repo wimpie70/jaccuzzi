@@ -108,6 +108,9 @@
       },
       "mix_pulse_enabled": {
         "name": "Meng-puls"
+      },
+      "maintenance": {
+        "name": "Onderhoud"
       }
     },
     "number": {

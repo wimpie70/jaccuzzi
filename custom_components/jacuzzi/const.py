@@ -25,6 +25,8 @@ CONF_POOLEX_ALWAYS_ON = "poolex_always_on"
 CONF_MIX_ENABLED = "mix_enabled"
 CONF_MIX_INTERVAL_MIN = "mix_interval_min"
 CONF_MIX_PULSE_S = "mix_pulse_s"
+CONF_MAINTENANCE = "maintenance"
+CONF_MAINT_SAVED = "maintenance_saved"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"

@@ -10,12 +10,19 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
 from .const import (
+    CONF_JACUZZI_CLIMATE,
+    CONF_MAINT_SAVED,
+    CONF_MAINTENANCE,
     CONF_MIX_ENABLED,
     CONF_POOLEX_ALWAYS_ON,
     CONF_POOLEX_CLIMATE,
+    CONF_PUMP_FAN,
+    CONF_WATERCARE_PEAK,
+    CONF_WATERCARE_SELECT,
     DEFAULT_MIX_ENABLED,
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
+    MIX_PUMPS,
 )
 
 
@@ -30,6 +37,7 @@ async def async_setup_entry(
             JacuzziPoolexSwitch(entry),
             JacuzziAlwaysOnSwitch(entry),
             JacuzziMixSwitch(entry),
+            JacuzziMaintenanceSwitch(entry),
         ]
     )
 
@@ -181,3 +189,114 @@ class JacuzziMixSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self._set_option(False)
+
+
+class JacuzziMaintenanceSwitch(SwitchEntity):
+    """Onderhoudsmodus: alle automatiseringen uit, kuip standby, Poolex off.
+
+    Aan = bewaar de huidige standen (Poolex hvac-mode/setpoint, watercare)
+    in options en zet alles in onderhoud: Poolex off, watercare op de
+    piek-zuinig-stand, circulatie- en massagepompen uit. De controller
+    slaat dan álle acties over (incl. failsafe en altijd-aan guard).
+    Uit = opgeslagen standen terugzetten; de controller hervat.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "maintenance"
+    _attr_icon = "mdi:wrench-cog"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{CONF_MAINTENANCE}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        """Onderhoud actief? (options > data > default=False)."""
+        return bool(
+            self._entry.options.get(
+                CONF_MAINTENANCE,
+                self._entry.data.get(CONF_MAINTENANCE, False),
+            )
+        )
+
+    def _conf(self) -> dict:
+        return {**self._entry.data, **self._entry.options}
+
+    async def _call(self, domain: str, service: str, data: dict) -> None:
+        await self.hass.services.async_call(domain, service, data, blocking=True)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Bewaar de huidige standen en zet alles in onderhoud."""
+        conf = self._conf()
+        poolex = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
+        watercare = self.hass.states.get(conf[CONF_WATERCARE_SELECT])
+        options = dict(self._entry.options)
+        options[CONF_MAINT_SAVED] = {
+            "poolex_mode": None if poolex is None else poolex.state,
+            "poolex_setpoint": (
+                None
+                if poolex is None
+                else poolex.attributes.get("temperature")
+            ),
+            "watercare": None if watercare is None else watercare.state,
+        }
+        options[CONF_MAINTENANCE] = True
+        # eerst de vlag: de herladende controller mag niets terugvechten
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+        await self._call(
+            "climate",
+            "set_hvac_mode",
+            {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": "off"},
+        )
+        await self._call(
+            "select",
+            "select_option",
+            {
+                "entity_id": conf[CONF_WATERCARE_SELECT],
+                "option": conf[CONF_WATERCARE_PEAK],
+            },
+        )
+        for fan in (conf[CONF_PUMP_FAN], *MIX_PUMPS):
+            await self._call("fan", "turn_off", {"entity_id": fan})
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Herstel de bewaarde standen; de controller hervat."""
+        conf = self._conf()
+        saved = self._entry.options.get(CONF_MAINT_SAVED) or {}
+        options = dict(self._entry.options)
+        options[CONF_MAINTENANCE] = False
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+        mode = saved.get("poolex_mode")
+        if mode and mode not in ("unavailable", "unknown"):
+            await self._call(
+                "climate",
+                "set_hvac_mode",
+                {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": mode},
+            )
+        if saved.get("poolex_setpoint") is not None:
+            await self._call(
+                "climate",
+                "set_temperature",
+                {
+                    "entity_id": conf[CONF_POOLEX_CLIMATE],
+                    "temperature": saved["poolex_setpoint"],
+                },
+            )
+        if saved.get("watercare") and saved["watercare"] not in (
+            "unavailable",
+            "unknown",
+        ):
+            await self._call(
+                "select",
+                "select_option",
+                {
+                    "entity_id": conf[CONF_WATERCARE_SELECT],
+                    "option": saved["watercare"],
+                },
+            )
