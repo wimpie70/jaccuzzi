@@ -26,6 +26,7 @@ from .const import (
     CONF_POOLEX_CLIMATE,
     CONF_POOLEX_MAX_W,
     CONF_POOLEX_POWER_SENSOR,
+    CONF_PUMP_FAN,
     DEFAULT_POOLEX_MAX_W,
     DOMAIN,
 )
@@ -389,10 +390,13 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
 class JacuzziHeatingPowerSensor(SensorEntity):
     """Thermisch vermogen in de kuip, geschat uit de temperatuurhelling.
 
-    De kuip is de calorimeter (1500 kg x 4.19 kJ/kgK). De Gecko-temp
-    arriveert in 0.5 °C-sprongen via de cloud, dus geen instantane
-    afgeleide maar least-squares over een 30 min-window. Negatief bij
-    warmteverlies — dan zie je dus het verlies ipv de opbrengst.
+    De kuip is de calorimeter (1500 kg x 4.19 kJ/kgK). Als bron de
+    Poolex-*inlaat* (DP16): tijdens circulatie is dat het gemengde
+    kuip-water zelf — representatiever dan de Gecko-sensor die op een
+    vaste plek bij de pack meet (stratificatie). Alleen sampelen als
+    de pomp draait: stilstaand water in de wisselaar is géén kuip-temp.
+    Least-squares over 30 min i.v.m. 0.1 °C-quantisatie + cloud-jitter.
+    Negatief = warmteverlies i.p.v. opbrengst.
     """
 
     _attr_should_poll = False
@@ -415,9 +419,13 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         self._samples: deque[tuple[float, float]] = deque()
         self._kw: float | None = None
 
-    def _tub_temp(self) -> float | None:
+    def _bulk_temp(self) -> float | None:
+        """Inlaat-temp (DP16) — alleen valide bij lopende circulatie."""
         conf = {**self._entry.data, **self._entry.options}
-        state = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        pump = self.hass.states.get(conf[CONF_PUMP_FAN])
+        if pump is None or pump.state != "on":
+            return None
+        state = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
         if state is None:
             return None
         try:
@@ -431,11 +439,13 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         return self._kw
 
     async def async_added_to_hass(self) -> None:
-        """Sample op controller-ticks én bij elke kuip-update."""
+        """Sample op inlaat-updates, pomp-stand én controller-ticks."""
         conf = {**self._entry.data, **self._entry.options}
         self.async_on_remove(
             async_track_state_change_event(
-                self.hass, [conf[CONF_JACUZZI_CLIMATE]], self._on_sample
+                self.hass,
+                [conf[CONF_POOLEX_CLIMATE], conf[CONF_PUMP_FAN]],
+                self._on_sample,
             )
         )
         self.async_on_remove(
@@ -449,7 +459,7 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         self.async_write_ha_state()
 
     def _sample(self) -> None:
-        temp = self._tub_temp()
+        temp = self._bulk_temp()
         now = time.monotonic()
         if temp is not None:
             # Alleen toevoegen als de waarde veranderde — anders wordt
