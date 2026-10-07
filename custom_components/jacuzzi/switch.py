@@ -15,6 +15,7 @@ from .const import (
     CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
     CONF_MIX_ENABLED,
+    CONF_NOTIFY_SERVICE,
     CONF_POOLEX_ALWAYS_ON,
     CONF_POOLEX_CLIMATE,
     CONF_PUMP_FAN,
@@ -297,6 +298,21 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
         )
         for fan in (conf[CONF_PUMP_FAN], *MIX_PUMPS):
             await self._call("fan", "turn_off", {"entity_id": fan})
+        # Waarschuwing: de Gecko-pack doet zelf in.flo-flow-checks en
+        # check-cycli (pomp droog bij lege kuip!) — software kan die niet
+        # blokkeren, dus de groep moet er echt uit.
+        if conf.get(CONF_NOTIFY_SERVICE):
+            await self._call(
+                "notify",
+                conf[CONF_NOTIFY_SERVICE],
+                {
+                    "title": "Jacuzzi: onderhoudsmodus aan",
+                    "message": "Poolex staat op off en de automatiseringen "
+                    "zijn uit — maar de Gecko-pack kan zelf pompen starten "
+                    "(flow-checks). Bij een lege kuip: schakel de groep "
+                    "uit in de meterkast!",
+                },
+            )
 
     async def async_turn_off(self, **kwargs) -> None:
         """Herstel de bewaarde standen; de controller hervat."""
