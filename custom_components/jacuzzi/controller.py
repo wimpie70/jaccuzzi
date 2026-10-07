@@ -400,6 +400,28 @@ class JacuzziController:
         if self.conf.get(CONF_MAINTENANCE):
             self.warmtevraag = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+            # Uitzondering: de Gecko-pack start zélf korte check-cycli
+            # (water samplen / vorstbewaking) — bij een lege kuip is dat
+            # een drooglopende pomp. Zet hem dan weer uit en waarschuw:
+            # de échte oplossing blijft de groep uitschakelen.
+            if pump.state == "on":
+                _LOGGER.warning(
+                    "Circulatiepomp liep tijdens onderhoud (Gecko check-cyclus?) "
+                    "— uitgezet. Lege kuip? Schakel de groep uit in de meterkast."
+                )
+                await self._async_call(
+                    "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
+                )
+                self._notify_once(
+                    "maintenance_pump",
+                    True,
+                    "Jacuzzi: pomp liep tijdens onderhoud",
+                    "De Gecko startte zelf een circulatie-cyclus — pomp "
+                    "teruggezet. Bij een lege kuip: groep uitschakelen in de "
+                    "meterkast, interne cycli kan HA niet volledig blokkeren.",
+                )
+            else:
+                self._notify_once("maintenance_pump", False, "", "")
             return
 
         # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers
