@@ -39,7 +39,7 @@ views:
           bulk-temperatuur zien en de warmtevraag niet te vroeg stopt.
 
           **Onderhoud**: zet alle automatiseringen uit — Poolex off,
-          watercare op piek-stand, pompen uit. Handig bij water verversen.
+          watercare op away-stand, pompen uit. Handig bij water verversen.
           De oude standen worden bij uitschakelen teruggezet.
 
       - type: entities
