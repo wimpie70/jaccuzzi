@@ -1,5 +1,7 @@
 # Jacuzzi dashboard — yaml-mode panel, meegeleverd door de integratie.
 # Niet bewerkbaar in de UI; updatet automatisch mee met HACS-releases.
+# Layout: geen masonry maar vaste kolommen (vertical-stacks in een
+# horizontal-stack) — de volgorde hieronder is de werkelijke plaatsing.
 title: Jacuzzi
 views:
   - title: Jacuzzi
@@ -41,6 +43,8 @@ views:
           **Onderhoud**: zet alle automatiseringen uit — Poolex off,
           watercare op standby/away, pompen uit. Handig bij water verversen.
           De oude standen worden bij uitschakelen teruggezet.
+          Let op: de Gecko-pack doet zelf flow-checks — bij een lege kuip
+          moet de groep uit in de meterkast.
 
       - type: entities
         title: Onderhoud
@@ -50,147 +54,147 @@ views:
 
       - type: horizontal-stack
         cards:
-          - type: thermostat
-            entity: climate.jaccuzzi_thermostat_1
-            name: Kuip
-          - type: thermostat
-            entity: climate.pool_heat_pump
-            name: Poolex
+          # ---- Kolom 1: thermostaten + status-overzicht ----
+          - type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.jaccuzzi_thermostat_1
+                name: Kuip
+              - type: thermostat
+                entity: climate.pool_heat_pump
+                name: Poolex
+              - type: glance
+                title: Gecko — circulatie
+                entities:
+                  - entity: fan.jaccuzzi_waterfall
+                    name: Circulatie
+                  - entity: binary_sensor.jacuzzi_pump_started_by_ha
+                    name: Pomp door HA
+                  - entity: fan.jaccuzzi_pump_1
+                    name: Mengen 1
+                  - entity: fan.jaccuzzi_pump_2
+                    name: Mengen 2
+              - type: glance
+                title: Poolex — warmtepomp
+                entities:
+                  - entity: switch.jacuzzi_poolex_power
+                    name: Aan/uit
+                  - entity: binary_sensor.jacuzzi_heat_demand
+                    name: Warmtevraag
+                  - entity: sensor.jacuzzi_poolex_compressor
+                    name: Compressor
+                  - entity: binary_sensor.pool_heat_pump_problem
+                    name: Fault
 
-      - type: horizontal-stack
-        cards:
-          - type: glance
-            title: Gecko — circulatie
-            entities:
-              - entity: fan.jaccuzzi_waterfall
-                name: Circulatie
-              - entity: binary_sensor.jacuzzi_pump_started_by_ha
-                name: Pomp door HA
-              - entity: fan.jaccuzzi_pump_1
-                name: Mengen 1
-              - entity: fan.jaccuzzi_pump_2
-                name: Mengen 2
-          - type: glance
-            title: Poolex — warmtepomp
-            entities:
-              - entity: switch.jacuzzi_poolex_power
-                name: Aan/uit
-              - entity: binary_sensor.jacuzzi_heat_demand
-                name: Warmtevraag
-              - entity: sensor.jacuzzi_poolex_compressor
-                name: Compressor
-              - entity: binary_sensor.pool_heat_pump_problem
-                name: Fault
+          # ---- Kolom 2: aan/uit-historie + regelinstellingen ----
+          - type: vertical-stack
+            cards:
+              - type: history-graph
+                title: Aan/uit (24 uur)
+                hours_to_show: 24
+                entities:
+                  - entity: fan.jaccuzzi_waterfall
+                    name: Circulatie
+                  - entity: fan.jaccuzzi_pump_1
+                    name: Massagepomp 1
+                  - entity: fan.jaccuzzi_pump_2
+                    name: Massagepomp 2
+                  - entity: binary_sensor.jacuzzi_pump_started_by_ha
+                    name: Pomp door HA
+                  - entity: binary_sensor.jacuzzi_heat_demand
+                    name: Warmtevraag
+                  - entity: binary_sensor.jacuzzi_water_flow
+                    name: Flow (pomp)
+                  - entity: binary_sensor.pool_heat_pump_defrost
+                    name: Defrost
+                  - entity: binary_sensor.jacuzzi_element_heating
+                    name: Element
+                  - entity: sensor.jacuzzi_poolex_fault
+                    name: Fout
+                  - entity: sensor.jacuzzi_poolex_compressor
+                    name: Compressor %
+                  - entity: sensor.jacuzzi_poolex_fan_speed
+                    name: Ventilator %
+              - type: entities
+                title: Piekblokkade
+                entities:
+                  - entity: time.jacuzzi_peak_start
+                    name: Start
+                  - entity: time.jacuzzi_peak_end
+                    name: Einde
+                  - entity: number.jacuzzi_solar_surplus_threshold
+                    name: PV-drempel
+                  - entity: select.jaccuzzi_watercare_mode
+                    name: Watercare (piek = Super Savings)
+              - type: entities
+                title: Meng-puls
+                show_header_toggle: false
+                entities:
+                  - entity: switch.jacuzzi_mixing_pulse
+                    name: Actief
+                  - entity: number.jacuzzi_mixing_interval
+                    name: Interval
+                  - entity: number.jacuzzi_mixing_pulse_duration
+                    name: Pulsduur
 
-      - type: history-graph
-        title: Aan/uit (24 uur)
-        hours_to_show: 24
-        entities:
-          - entity: fan.jaccuzzi_waterfall
-            name: Circulatie
-          - entity: fan.jaccuzzi_pump_1
-            name: Massagepomp 1
-          - entity: fan.jaccuzzi_pump_2
-            name: Massagepomp 2
-          - entity: binary_sensor.jacuzzi_pump_started_by_ha
-            name: Pomp door HA
-          - entity: binary_sensor.jacuzzi_heat_demand
-            name: Warmtevraag
-          - entity: binary_sensor.jacuzzi_water_flow
-            name: Flow (pomp)
-          - entity: binary_sensor.pool_heat_pump_defrost
-            name: Defrost
-          - entity: binary_sensor.jacuzzi_element_heating
-            name: Element
-          - entity: sensor.jacuzzi_poolex_fault
-            name: Fout
-          - entity: sensor.jacuzzi_poolex_compressor
-            name: Compressor %
-          - entity: sensor.jacuzzi_poolex_fan_speed
-            name: Ventilator %
-
-      - type: history-graph
-        title: Temperaturen (24 uur)
-        hours_to_show: 24
-        entities:
-          - entity: sensor.jacuzzi_tub_temperature
-            name: Kuip
-          - entity: sensor.jacuzzi_poolex_inlet
-            name: Wisselaar inlaat
-          - entity: sensor.pool_heat_pump_outflow_temperature
-            name: Uitlaat
-          - entity: sensor.pool_heat_pump_vent_temperature
-            name: Heetgas
-          - entity: sensor.pool_heat_pump_coil_temperature
-            name: Verdamper
-          - entity: sensor.pool_heat_pump_temperature_2
-            name: Buiten
-
-      - type: entities
-        title: Piekblokkade
-        entities:
-          - entity: time.jacuzzi_peak_start
-            name: Start
-          - entity: time.jacuzzi_peak_end
-            name: Einde
-          - entity: number.jacuzzi_solar_surplus_threshold
-            name: PV-drempel
-          - entity: select.jaccuzzi_watercare_mode
-            name: Watercare (piek = Super Savings)
-
-      - type: entities
-        title: Poolex — sturing
-        show_header_toggle: false
-        entities:
-          - entity: select.pool_heat_pump_auxiliary_heating
-            name: Bijstook (C4)
-          - entity: select.pool_heat_pump_circulation_pump
-            name: Pomprelais (C8)
-          - entity: switch.pool_heat_pump_defrost
-            name: Defrost (handmatig)
-          - entity: binary_sensor.pool_heat_pump_defrost
-            name: Defrost
-          - entity: binary_sensor.jacuzzi_element_heating
-            name: Element actief
-          - entity: number.pool_heat_pump_sampling_interval
-            name: Meetinterval (C9)
-          - entity: switch.jacuzzi_poolex_always_on
-            name: Altijd aan (vorstbeveiliging)
-
-      - type: entities
-        title: Verbruik
-        show_header_toggle: false
-        entities:
-          - entity: sensor.jacuzzi_poolex_energy
-            name: Poolex (kWh)
-          - entity: sensor.jacuzzi_energy
-            name: Jacuzzi (kWh)
-
-      - type: entities
-        title: Meng-puls
-        show_header_toggle: false
-        entities:
-          - entity: switch.jacuzzi_mixing_pulse
-            name: Actief
-          - entity: number.jacuzzi_mixing_interval
-            name: Interval
-          - entity: number.jacuzzi_mixing_pulse_duration
-            name: Pulsduur
-
-      - type: entities
-        title: Gecko — kuip
-        show_header_toggle: false
-        entities:
-          - entity: fan.jaccuzzi_waterfall
-            name: Circulatiepomp
-          - entity: fan.jaccuzzi_pump_1
-            name: Massagepomp 1
-          - entity: fan.jaccuzzi_pump_2
-            name: Massagepomp 2
-          - entity: light.jaccuzzi_light_1
-            name: Verlichting
-          - entity: select.jaccuzzi_watercare_mode
-            name: Watercare
-          - entity: binary_sensor.jaccuzzi_spa_status
-            name: Spa status
-
+          # ---- Kolom 3: temperatuur-historie + sturing/verbruik ----
+          - type: vertical-stack
+            cards:
+              - type: history-graph
+                title: Temperaturen (24 uur)
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.jacuzzi_tub_temperature
+                    name: Kuip
+                  - entity: sensor.jacuzzi_poolex_inlet
+                    name: Wisselaar inlaat
+                  - entity: sensor.pool_heat_pump_outflow_temperature
+                    name: Uitlaat
+                  - entity: sensor.pool_heat_pump_vent_temperature
+                    name: Heetgas
+                  - entity: sensor.pool_heat_pump_coil_temperature
+                    name: Verdamper
+                  - entity: sensor.pool_heat_pump_temperature_2
+                    name: Buiten
+              - type: entities
+                title: Poolex — sturing
+                show_header_toggle: false
+                entities:
+                  - entity: select.pool_heat_pump_auxiliary_heating
+                    name: Bijstook (C4)
+                  - entity: select.pool_heat_pump_circulation_pump
+                    name: Pomprelais (C8)
+                  - entity: switch.pool_heat_pump_defrost
+                    name: Defrost (handmatig)
+                  - entity: binary_sensor.pool_heat_pump_defrost
+                    name: Defrost
+                  - entity: binary_sensor.jacuzzi_element_heating
+                    name: Element actief
+                  - entity: number.pool_heat_pump_sampling_interval
+                    name: Meetinterval (C9)
+                  - entity: switch.jacuzzi_poolex_always_on
+                    name: Altijd aan (vorstbeveiliging)
+              - type: entities
+                title: Verbruik
+                show_header_toggle: false
+                entities:
+                  - entity: sensor.jacuzzi_poolex_energy
+                    name: Poolex (kWh)
+                  - entity: sensor.jacuzzi_energy
+                    name: Jacuzzi (kWh)
+              - type: entities
+                title: Gecko — kuip
+                show_header_toggle: false
+                entities:
+                  - entity: fan.jaccuzzi_waterfall
+                    name: Circulatiepomp
+                  - entity: fan.jaccuzzi_pump_1
+                    name: Massagepomp 1
+                  - entity: fan.jaccuzzi_pump_2
+                    name: Massagepomp 2
+                  - entity: light.jaccuzzi_light_1
+                    name: Verlichting
+                  - entity: select.jaccuzzi_watercare_mode
+                    name: Watercare
+                  - entity: binary_sensor.jaccuzzi_spa_status
+                    name: Spa status
