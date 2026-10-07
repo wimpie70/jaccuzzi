@@ -443,6 +443,13 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         since_mix = now - self._last_mix
         if not (MIX_DELAY_S <= since_mix <= MIXED_VALID_S):
             return None
+        compressor = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
+        try:
+            compressor_on = float(compressor.state) > 0
+        except (TypeError, ValueError):
+            compressor_on = False
+        if compressor is None or not compressor_on:
+            return None
         pump = self.hass.states.get(conf[CONF_PUMP_FAN])
         if pump is None or pump.state != "on":
             return None
