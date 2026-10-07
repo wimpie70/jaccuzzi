@@ -67,6 +67,7 @@ MAINT_PUMP_GRACE_S = 90  # Gecko check-cyclus (~40 s) niet tegenwerken
 MAINT_PUMP_RETRY_S = 300  # pack weigert turn_off tijdens eigen cyclus
 PROBLEM_DELAY_S = 120    # fault-bit aan voordat we melden — d1 mag
                          # eerst de kans krijgen bij hervatte flow te clearen
+FLOW_FAULT_OFF_S = 300   # pomp aan + fault zo lang -> pomp uit (drooglopen/lek)
 NO_COMPRESSOR_S = 600    # warmtevraag zonder compressor -> verdacht
 EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
 UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)

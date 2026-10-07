@@ -51,6 +51,7 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
+    FLOW_FAULT_OFF_S,
     MAINT_PUMP_GRACE_S,
     MAINT_PUMP_RETRY_S,
     MIX_PUMPS,
@@ -113,6 +114,7 @@ class JacuzziController:
         self._early_restored = False     # PV-einde al gedaan dit venster
         self._startup_restore_checked = False  # eenmalig: achtergebleven
         #                                      piek-setpoint herstellen
+        self._flow_lockout = False       # flow-fault: geen auto-aanzet pomp
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._unsubs = []
 
@@ -568,7 +570,37 @@ class JacuzziController:
         tub_temp = _attr_float(jacuzzi, "current_temperature")
         compressor_on = _float(compressor) > 0
         pump_on = pump.state == "on"
+        problem_active = problem is not None and problem.state == "on"
         self.warmtevraag = not poolex_off and tub_temp < setpoint - self.conf["temp_margin"]
+
+        # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
+        # komt echt geen water door (lek tussen pomp en flowmeter, of
+        # een lege kuip). Doordraaien loost de kuip leeg of laat de
+        # pomp drooglopen -> na FLOW_FAULT_OFF_S zetten we de pomp uit
+        # en blokkeren we auto-aanzet tot de fault weg is, of tot
+        # iemand de pomp bewust weer aanzet (pump_on -> reset).
+        if pump_on:
+            self._flow_lockout = False
+        if self._since_true(
+            "flow_fault", pump_on and problem_active, FLOW_FAULT_OFF_S
+        ):
+            _LOGGER.warning(
+                "Flow-fault >%d s bij draaiende pomp — pomp uit (drooglopen/lek?)",
+                FLOW_FAULT_OFF_S,
+            )
+            await self._async_call(
+                "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
+            )
+            self.pump_by_us = False
+            self._flow_lockout = True
+            self._notify_once(
+                "flow_fault", True, "Jacuzzi: flow-fault",
+                "De Poolex meldt al 5 min een flow-fout terwijl de "
+                "circulatiepomp draait — pomp uitgezet (lek of lege kuip?). "
+                "Auto-aanzet staat uit tot de storing weg is.",
+            )
+        elif not problem_active:
+            self._notify_once("flow_fault", False, "", "")
 
         # Onthoud dat de compressor echt gedraaid heeft — de nadraai-timer
         # (comp_idle) mag alleen tellen ná een echte run, anders is
@@ -584,7 +616,7 @@ class JacuzziController:
         compressor_running = self._since_true(
             "comp_running", compressor_on, FAILSAFE_DELAY_S
         )
-        if compressor_running and pump.state == "off":
+        if compressor_running and pump.state == "off" and not self._flow_lockout:
             _LOGGER.warning("Compressor draait zonder flow — pomp aan")
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
@@ -598,7 +630,7 @@ class JacuzziController:
             self._notify_once("failsafe", False, "", "")
 
         # Pomp AAN bij warmtevraag (onmiddellijk, zoals template-trigger)
-        if self.warmtevraag and not pump_on:
+        if self.warmtevraag and not pump_on and not self._flow_lockout:
             _LOGGER.info("Warmtevraag (%.1f < %.1f) — pomp aan", tub_temp, setpoint)
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
@@ -697,7 +729,6 @@ class JacuzziController:
         # (er stroomt dan toch niets); een vertraagde d1 na het stoppen
         # wordt zo ook automatisch onderdrukt. De fault blijft wel
         # zichtbaar op de sensor/entities-kaart.
-        problem_active = problem is not None and problem.state == "on"
         self._notify_once(
             "problem",
             self._since_true(
