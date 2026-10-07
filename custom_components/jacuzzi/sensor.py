@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from collections import deque
+
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -41,6 +44,13 @@ POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 POOLEX_FAN_MAX_RPM = 1000.0
 # compressor duty cycle is 0-1500 ruw -> /15 = %
 POOLEX_COMPRESSOR_MAX = 1500.0
+# Kuip als calorimeter: kg water x 4.186 kJ/kgK -> J per K
+TUB_MASS_KG = 1500.0
+TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K
+# Regressie-window: korter dan ~20 min is de 0.5 °C-quantisatie ruis,
+# langer dan ~45 min dempt hij echte verandering te veel.
+HEATING_WINDOW_S = 30 * 60
+HEATING_MIN_S = 10 * 60  # minimaal zoveel data voor een betrouwbare helling
 
 
 async def async_setup_entry(
@@ -49,11 +59,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the mirror sensor + configured energy sensors."""
+    heating = JacuzziHeatingPowerSensor(entry)
+    power_est = JacuzziPoolexPowerEstimateSensor(entry)
+    cop = JacuzziCopEstimateSensor(entry)
+    cop.bind(heating, power_est)
     entities: list[SensorEntity] = [
         JacuzziTubTempSensor(entry),
         JacuzziPoolexInletTempSensor(entry),
         JacuzziPoolexDeltaTSensor(entry),
-        JacuzziPoolexPowerEstimateSensor(entry),
+        power_est,
+        heating,
+        cop,
         JacuzziPoolexFanSensor(entry),
         JacuzziPoolexFaultSensor(entry),
         JacuzziPoolexCompressorSensor(entry),
@@ -367,6 +383,161 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
 
     @callback
     def _on_source(self, _event: Event[EventStateChangedData]) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziHeatingPowerSensor(SensorEntity):
+    """Thermisch vermogen in de kuip, geschat uit de temperatuurhelling.
+
+    De kuip is de calorimeter (1500 kg x 4.19 kJ/kgK). De Gecko-temp
+    arriveert in 0.5 °C-sprongen via de cloud, dus geen instantane
+    afgeleide maar least-squares over een 30 min-window. Negatief bij
+    warmteverlies — dan zie je dus het verlies ipv de opbrengst.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "heating_power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_suggested_display_precision = 2
+    _attr_icon = "mdi:fire"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_heating_power"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+        self._samples: deque[tuple[float, float]] = deque()
+        self._kw: float | None = None
+
+    def _tub_temp(self) -> float | None:
+        conf = {**self._entry.data, **self._entry.options}
+        state = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        if state is None:
+            return None
+        try:
+            return float(state.attributes["current_temperature"])
+        except (TypeError, ValueError, KeyError):
+            return None
+
+    @property
+    def native_value(self) -> float | None:
+        """Geleverd (of verloren) thermisch vermogen in kW."""
+        return self._kw
+
+    async def async_added_to_hass(self) -> None:
+        """Sample op controller-ticks én bij elke kuip-update."""
+        conf = {**self._entry.data, **self._entry.options}
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [conf[CONF_JACUZZI_CLIMATE]], self._on_sample
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_sample)
+        )
+        self._sample()
+
+    @callback
+    def _on_sample(self, *_args) -> None:
+        self._sample()
+        self.async_write_ha_state()
+
+    def _sample(self) -> None:
+        temp = self._tub_temp()
+        now = time.monotonic()
+        if temp is not None:
+            # Alleen toevoegen als de waarde veranderde — anders wordt
+            # de regressie door dubbele punten vertekend.
+            if not self._samples or self._samples[-1][1] != temp:
+                self._samples.append((now, temp))
+            while self._samples and self._samples[0][0] < now - HEATING_WINDOW_S:
+                self._samples.popleft()
+        self._kw = self._slope_kw(now)
+
+    def _slope_kw(self, now: float) -> float | None:
+        pts = list(self._samples)
+        if len(pts) < 4 or pts[-1][0] - pts[0][0] < HEATING_MIN_S:
+            return None
+        t0 = pts[0][0]
+        xs = [p[0] - t0 for p in pts]
+        ys = [p[1] for p in pts]
+        n = len(pts)
+        sx, sy = sum(xs), sum(ys)
+        sxx = sum(x * x for x in xs)
+        sxy = sum(x * y for x, y in pts)
+        denom = n * sxx - sx * sx
+        if denom <= 0:
+            return None
+        slope = (n * sxy - sx * sy) / denom  # K/s
+        return round(slope * TUB_HEAT_CAPACITY / 1000.0, 2)
+
+
+class JacuzziCopEstimateSensor(SensorEntity):
+    """Grove COP: thermisch vermogen / elektrisch vermogen (beide geschat).
+
+    Alleen zinvol als de compressor draait en de kuip echt opwarmt;
+    anders None. Vergelijkbare schatting aan beide kanten, dus vooral
+    als trend-indicator gebruiken.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "cop_estimate"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:gauge"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_cop_estimate"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+        self._heating: JacuzziHeatingPowerSensor | None = None
+        self._power: JacuzziPoolexPowerEstimateSensor | None = None
+
+    def bind(
+        self,
+        heating: JacuzziHeatingPowerSensor,
+        power: JacuzziPoolexPowerEstimateSensor,
+    ) -> None:
+        """Koppel de bron-sensoren (aangeroepen in async_setup_entry)."""
+        self._heating = heating
+        self._power = power
+
+    @property
+    def native_value(self) -> float | None:
+        """COP-schatting, None als niet berekenbaar."""
+        if (
+            self._heating is None
+            or self._power is None
+            or self._heating.native_value is None
+            or self._power.native_value is None
+            or self._power.native_value < 100.0
+            or self._heating.native_value <= 0.0
+        ):
+            return None
+        return round(
+            self._heating.native_value / (self._power.native_value / 1000.0),
+            1,
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Herbereken op elke controller-tick."""
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_update)
+        )
+
+    @callback
+    def _on_update(self, *_args) -> None:
         self.async_write_ha_state()
 
 

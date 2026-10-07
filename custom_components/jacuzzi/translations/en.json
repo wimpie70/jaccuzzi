@@ -103,6 +103,12 @@
       },
       "poolex_power_estimate": {
         "name": "Poolex power (estimate)"
+      },
+      "heating_power": {
+        "name": "Thermal power"
+      },
+      "cop_estimate": {
+        "name": "COP (estimate)"
       }
     },
     "switch": {

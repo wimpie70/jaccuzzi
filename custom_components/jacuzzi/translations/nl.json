@@ -103,6 +103,12 @@
       },
       "poolex_power_estimate": {
         "name": "Poolex geschat vermogen"
+      },
+      "heating_power": {
+        "name": "Thermisch vermogen"
+      },
+      "cop_estimate": {
+        "name": "COP (geschat)"
       }
     },
     "switch": {

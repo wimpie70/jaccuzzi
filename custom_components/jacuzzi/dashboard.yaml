@@ -216,6 +216,10 @@ views:
       entities:
       - entity: sensor.jacuzzi_poolex_power_estimate
         name: Poolex vermogen (geschat)
+      - entity: sensor.jacuzzi_heating_power
+        name: Thermisch vermogen (geschat)
+      - entity: sensor.jacuzzi_cop_estimate
+        name: COP (geschat)
       - entity: number.jacuzzi_poolex_max_watts
         name: Max opgenomen vermogen
       - entity: sensor.jacuzzi_poolex_energy
