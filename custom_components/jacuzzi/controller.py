@@ -50,6 +50,7 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
+    MAINT_PUMP_GRACE_S,
     MIX_PUMPS,
     NO_COMPRESSOR_S,
     PEAK_MODE_OFF,
@@ -401,13 +402,17 @@ class JacuzziController:
             self.warmtevraag = False
             async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             # Uitzondering: de Gecko-pack start zélf korte check-cycli
-            # (water samplen / vorstbewaking) — bij een lege kuip is dat
-            # een drooglopende pomp. Zet hem dan weer uit en waarschuw:
-            # de échte oplossing blijft de groep uitschakelen.
-            if pump.state == "on":
+            # (~40 s) om water te samplen / vorst te bewaken. Die laten
+            # we met rust (anders pingpong: hij aan, wij uit, hij aan).
+            # Pas als de pomp langer dan de grace-periode aanhoudt —
+            # geen check-cyclus meer — zetten we hem terug en waarschuwen.
+            if self._since_true(
+                "maint_pump_grace", pump.state == "on", MAINT_PUMP_GRACE_S
+            ):
                 _LOGGER.warning(
-                    "Circulatiepomp liep tijdens onderhoud (Gecko check-cyclus?) "
-                    "— uitgezet. Lege kuip? Schakel de groep uit in de meterkast."
+                    "Circulatiepomp > %d s aan tijdens onderhoud — uitgezet. "
+                    "Lege kuip? Schakel de groep uit in de meterkast.",
+                    MAINT_PUMP_GRACE_S,
                 )
                 await self._async_call(
                     "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
@@ -416,9 +421,9 @@ class JacuzziController:
                     "maintenance_pump",
                     True,
                     "Jacuzzi: pomp liep tijdens onderhoud",
-                    "De Gecko startte zelf een circulatie-cyclus — pomp "
-                    "teruggezet. Bij een lege kuip: groep uitschakelen in de "
-                    "meterkast, interne cycli kan HA niet volledig blokkeren.",
+                    "De circulatiepomp stond aan tijdens onderhoud — "
+                    "teruggezet. Bij een lege kuip: groep uitschakelen in "
+                    "de meterkast, interne cycli kan HA niet blokkeren.",
                 )
             else:
                 self._notify_once("maintenance_pump", False, "", "")
