@@ -52,11 +52,9 @@ TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K
 # langer dan ~45 min dempt hij echte verandering te veel.
 HEATING_WINDOW_S = 30 * 60
 HEATING_MIN_S = 10 * 60  # minimaal zoveel data voor een betrouwbare helling
-# Alleen sampelen ná een meng-puls (circulatie loopt door): tijdens de
-# puls meet de inlaat de overgang; ~15-180 s erna is de bulk gemengd.
-MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
-MIX_DELAY_S = 15
-MIXED_VALID_S = 180
+# Sampelen zolang compressor stookt + circulatie draait — de inlaat is
+# dan continu het gemengde bulk-water. Buffer wissen als de stook
+# stopt: elke cyclus krijgt zijn eigen schone helling.
 
 
 async def async_setup_entry(
@@ -423,36 +421,22 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         }
         self._samples: deque[tuple[float, float]] = deque()
         self._kw: float | None = None
-        self._last_mix = 0.0  # monotonic ts: massagepomp aan/liep net
 
-    def _bulk_temp(self, now: float) -> float | None:
-        """Inlaat-temp (DP16) rond een meng-puls bij lopende circulatie.
-
-        Tussen pulsen aanzuigt de wisselaar mogelijk een gestratificeerde
-        laag — dan is de inlaat géén bulk-temp meer.
-        """
+    def _heating_conditions(self) -> bool:
+        """Compressor stookt én circulatie draait."""
         conf = {**self._entry.data, **self._entry.options}
-        mixing = False
-        for ent in MIX_PUMPS:
-            st = self.hass.states.get(ent)
-            if st is not None and st.state == "on":
-                mixing = True
-                break
-        if mixing:
-            self._last_mix = now  # eindt pas als de puls stopt
-        since_mix = now - self._last_mix
-        if not (MIX_DELAY_S <= since_mix <= MIXED_VALID_S):
-            return None
-        compressor = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
-        try:
-            compressor_on = float(compressor.state) > 0
-        except (TypeError, ValueError):
-            compressor_on = False
-        if compressor is None or not compressor_on:
-            return None
         pump = self.hass.states.get(conf[CONF_PUMP_FAN])
         if pump is None or pump.state != "on":
-            return None
+            return False
+        compressor = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
+        try:
+            return float(compressor.state) > 0
+        except (TypeError, ValueError, AttributeError):
+            return False
+
+    def _bulk_temp(self) -> float | None:
+        """Inlaat-temp (DP16) — tijdens circulatie het gemengde bulk."""
+        conf = {**self._entry.data, **self._entry.options}
         state = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
         if state is None:
             return None
@@ -488,7 +472,13 @@ class JacuzziHeatingPowerSensor(SensorEntity):
 
     def _sample(self) -> None:
         now = time.monotonic()
-        temp = self._bulk_temp(now)
+        if not self._heating_conditions():
+            # Stook stopt -> cyclus voorbij; schone helling bij de
+            # volgende run i.p.v. overgang te mengen.
+            self._samples.clear()
+            self._kw = None
+            return
+        temp = self._bulk_temp()
         if temp is not None:
             # Alleen toevoegen als de waarde veranderde — anders wordt
             # de regressie door dubbele punten vertekend.
