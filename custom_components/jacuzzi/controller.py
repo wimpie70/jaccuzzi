@@ -625,11 +625,12 @@ class JacuzziController:
         mix_pulse = float(self.conf.get(CONF_MIX_PULSE_S, DEFAULT_MIX_PULSE_S))
         if self._mix_entity is not None:
             if not mix_enabled or now_mono >= self._mix_until:
-                _LOGGER.info("Meng-puls klaar — %s uit", self._mix_entity)
-                await self._async_call(
-                    "fan", "turn_off", {"entity_id": self._mix_entity}
-                )
+                entity = self._mix_entity
                 self._mix_entity = None
+                _LOGGER.info("Meng-puls klaar — %s uit", entity)
+                await self._async_call(
+                    "fan", "turn_off", {"entity_id": entity}
+                )
         elif any(
             self.hass.states.is_state(p, "on") for p in MIX_PUMPS
         ):
@@ -643,6 +644,13 @@ class JacuzziController:
             and now_mono - self._mix_last >= mix_interval
         ):
             target = MIX_PUMPS[self._mix_next]
+            # Eerst markeren, dán pas de call — _async_evaluate kan tijdens
+            # de await opnieuw starten (state-change per tick) en zou de
+            # puls anders meerdere keren vuren.
+            self._mix_entity = target
+            self._mix_until = now_mono + mix_pulse
+            self._mix_next = (self._mix_next + 1) % len(MIX_PUMPS)
+            self._mix_last = now_mono
             if await self._async_call(
                 "fan", "turn_on", {"entity_id": target}
             ):
@@ -651,10 +659,9 @@ class JacuzziController:
                     target,
                     mix_pulse,
                 )
-                self._mix_entity = target
-                self._mix_until = now_mono + mix_pulse
-                self._mix_next = (self._mix_next + 1) % len(MIX_PUMPS)
-                self._mix_last = now_mono
+            else:
+                _LOGGER.warning("Meng-puls mislukt voor %s", target)
+                self._mix_entity = None
 
         # Monitor 0b: water te koud maar hvac_mode staat op 'off' — de
         # warmtevraag wordt dan bewust onderdrukt en er gebeurt zichtbaar
