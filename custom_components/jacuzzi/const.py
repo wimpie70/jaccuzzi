@@ -38,7 +38,10 @@ DEFAULT_WATERCARE_SELECT = "select.jaccuzzi_watercare_mode"
 DEFAULT_NOTIFY_SERVICE = "notify"
 DEFAULT_PEAK_START = "16:30"
 DEFAULT_PEAK_END = "20:00"
-DEFAULT_WATERCARE_PEAK = "Super Savings"   # moet exact matchen met select-options
+# multi-word opties ('Super Savings') breken in de geckoal-integratie:
+# geckolib accepteert alleen UPPER_SNAKE intern. Single-word modes
+# (Away/Savings/Weekender) werken wel.
+DEFAULT_WATERCARE_PEAK = "Away"            # moet exact matchen met select-options
 DEFAULT_WATERCARE_NORMAL = "Savings"
 DEFAULT_TEMP_MARGIN = 1.0
 PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan

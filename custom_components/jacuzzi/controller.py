@@ -279,6 +279,16 @@ class JacuzziController:
                 "Watercare-optie %r niet gevonden; geldig: %s", want, options
             )
             return False
+        # Let op: de geckoal-select adverteert Title-Case options maar
+        # geckolib's set_mode_by_name accepteert alleen UPPER_SNAKE.
+        # Multi-word opties ('Super Savings') falen daardoor altijd
+        # stilletjes — gebruik single-word modes (Away/Savings/Weekender).
+        if " " in match.strip():
+            _LOGGER.warning(
+                "Watercare-optie %r bevat een spatie — de gecko-integratie "
+                "zet multi-word modes mogelijk niet door (stille fout)",
+                match,
+            )
         return await self._async_call(
             "select",
             "select_option",
