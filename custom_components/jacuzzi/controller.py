@@ -115,6 +115,7 @@ class JacuzziController:
         self._startup_restore_checked = False  # eenmalig: achtergebleven
         #                                      piek-setpoint herstellen
         self._flow_lockout = False       # flow-fault: geen auto-aanzet pomp
+        self._flow_saved_watercare: str | None = None  # watercare vóór Away
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._unsubs = []
 
@@ -576,30 +577,48 @@ class JacuzziController:
         # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
         # komt echt geen water door (lek tussen pomp en flowmeter, of
         # een lege kuip). Doordraaien loost de kuip leeg of laat de
-        # pomp drooglopen -> na FLOW_FAULT_OFF_S zetten we de pomp uit
-        # en blokkeren we auto-aanzet tot de fault weg is, of tot
-        # iemand de pomp bewust weer aanzet (pump_on -> reset).
-        if pump_on:
-            self._flow_lockout = False
-        if self._since_true(
-            "flow_fault", pump_on and problem_active, FLOW_FAULT_OFF_S
+        # pomp drooglopen. Eenmalig ingrijpen: de Gecko zet de pomp
+        # zelf terug (eigen priming/filter-logica, 'non-user initiators')
+        # — daarom esaleren we naar watercare 'Away': dan stopt de pack
+        # ook met eigen cycli. Lockout houdt tot de fault weg is;
+        # reset NIET op pump_on want de Gecko start 'm zelf terug.
+        if (
+            not self._flow_lockout
+            and self._since_true(
+                "flow_fault", pump_on and problem_active, FLOW_FAULT_OFF_S
+            )
         ):
             _LOGGER.warning(
-                "Flow-fault >%d s bij draaiende pomp — pomp uit (drooglopen/lek?)",
+                "Flow-fault >%d s bij draaiende pomp — pomp uit + watercare Away",
                 FLOW_FAULT_OFF_S,
             )
             await self._async_call(
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
             )
             self.pump_by_us = False
+            sel = self._state("watercare_select")
+            if sel is not None and sel.state not in (
+                "unavailable", "unknown", "Away",
+            ):
+                self._flow_saved_watercare = sel.state
+                await self._set_watercare_opt("Away")
             self._flow_lockout = True
             self._notify_once(
                 "flow_fault", True, "Jacuzzi: flow-fault",
                 "De Poolex meldt al 5 min een flow-fout terwijl de "
-                "circulatiepomp draait — pomp uitgezet (lek of lege kuip?). "
-                "Auto-aanzet staat uit tot de storing weg is.",
+                "circulatiepomp draait — pomp uit + watercare op Away "
+                "(lek of lege kuip?). Auto-aanzet staat uit tot de "
+                "storing weg is.",
             )
         elif not problem_active:
+            if self._flow_lockout and self._flow_saved_watercare is not None:
+                _LOGGER.info(
+                    "Flow-fault weg — watercare terug naar %s",
+                    self._flow_saved_watercare,
+                )
+                await self._set_watercare_opt(self._flow_saved_watercare)
+            self._flow_saved_watercare = None
+            self._flow_lockout = False
             self._notify_once("flow_fault", False, "", "")
 
         # Onthoud dat de compressor echt gedraaid heeft — de nadraai-timer
