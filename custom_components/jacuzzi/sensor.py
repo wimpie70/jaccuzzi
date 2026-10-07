@@ -65,15 +65,13 @@ async def async_setup_entry(
     """Set up the mirror sensor + configured energy sensors."""
     heating = JacuzziHeatingPowerSensor(entry)
     power_est = JacuzziPoolexPowerEstimateSensor(entry)
-    cop = JacuzziCopEstimateSensor(entry)
-    cop.bind(heating, power_est)
     entities: list[SensorEntity] = [
         JacuzziTubTempSensor(entry),
         JacuzziPoolexInletTempSensor(entry),
         JacuzziPoolexDeltaTSensor(entry),
         power_est,
         heating,
-        cop,
+        JacuzziCopEstimateSensor(entry),
         JacuzziPoolexFanSensor(entry),
         JacuzziPoolexFaultSensor(entry),
         JacuzziPoolexCompressorSensor(entry),
@@ -507,11 +505,12 @@ class JacuzziHeatingPowerSensor(SensorEntity):
 
 
 class JacuzziCopEstimateSensor(SensorEntity):
-    """Grove COP: thermisch vermogen / elektrisch vermogen (beide geschat).
+    """COP per stook-cyclus: ΔT bulk-water / geïntegreerd elektrisch verbruik.
 
-    Alleen zinvol als de compressor draait en de kuip echt opwarmt;
-    anders None. Vergelijkbare schatting aan beide kanten, dus vooral
-    als trend-indicator gebruiken.
+    Alleen post-mix-metingen tellen als bulk-temp: de massagepompen
+    (niet de circulatie) mengen de kuip echt. Tijdens een cyclus:
+    eerste post-mix-venster -> T_start, elk volgend venster -> T_eind,
+    Wh_est loopt door. Bij cyclus-einde: COP = ΔT*Q / ΔWh.
     """
 
     _attr_should_poll = False
@@ -521,6 +520,10 @@ class JacuzziCopEstimateSensor(SensorEntity):
     _attr_suggested_display_precision = 1
     _attr_icon = "mdi:gauge"
 
+    MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
+    MIX_DELAY_S = 15      # na einde puls: overgang voorbij
+    MIX_WINDOW_S = 180    # daarna geldt inlaat als bulk
+
     def __init__(self, entry: JacuzziConfigEntry) -> None:
         """Bind aan de config entry."""
         self._entry = entry
@@ -529,44 +532,164 @@ class JacuzziCopEstimateSensor(SensorEntity):
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
         }
-        self._heating: JacuzziHeatingPowerSensor | None = None
-        self._power: JacuzziPoolexPowerEstimateSensor | None = None
-
-    def bind(
-        self,
-        heating: JacuzziHeatingPowerSensor,
-        power: JacuzziPoolexPowerEstimateSensor,
-    ) -> None:
-        """Koppel de bron-sensoren (aangeroepen in async_setup_entry)."""
-        self._heating = heating
-        self._power = power
+        self._cycle = False
+        self._cum_wh = 0.0          # geïntegreerde Wh deze cyclus
+        self._last_ts: float | None = None
+        self._last_w: float | None = None
+        self._first_temp: float | None = None   # T_start (post-mix)
+        self._first_wh: float | None = None     # Wh-stand bij T_start
+        self._last_temp: float | None = None    # T_eind (post-mix)
+        self._last_wh: float | None = None      # Wh-stand bij T_eind
+        self._mix_active = False
+        self._mix_end = 0.0
+        self._cop: float | None = None
+        self._cycle_kwh_th: float | None = None
+        self._cycle_kwh_el: float | None = None
+        self._cycle_dt: float | None = None
 
     @property
     def native_value(self) -> float | None:
-        """COP-schatting, None als niet berekenbaar."""
-        if (
-            self._heating is None
-            or self._power is None
-            or self._heating.native_value is None
-            or self._power.native_value is None
-            or self._power.native_value < 100.0
-            or self._heating.native_value <= 0.0
-        ):
-            return None
-        return round(
-            self._heating.native_value / (self._power.native_value / 1000.0),
-            1,
-        )
+        """COP van de laatst afgeronde stook-cyclus."""
+        return self._cop
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """De getallen achter de COP voor verificatie."""
+        return {
+            "delta_t_k": self._cycle_dt,
+            "kwh_thermisch": self._cycle_kwh_th,
+            "kwh_elektrisch": self._cycle_kwh_el,
+        }
 
     async def async_added_to_hass(self) -> None:
-        """Herbereken op elke controller-tick."""
+        """Volg alle bronnen + controller-ticks voor de integratie."""
+        conf = {**self._entry.data, **self._entry.options}
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_update)
+            async_track_state_change_event(
+                self.hass,
+                [
+                    POOLEX_COMPRESSOR_SENSOR,
+                    conf[CONF_POOLEX_CLIMATE],
+                    conf[CONF_PUMP_FAN],
+                    *self.MIX_PUMPS,
+                ],
+                self._on_event,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_event)
         )
 
     @callback
-    def _on_update(self, *_args) -> None:
+    def _on_event(self, *_args) -> None:
+        self._tick()
         self.async_write_ha_state()
+
+    # --- helpers -----------------------------------------------------
+
+    def _conf(self) -> dict:
+        return {**self._entry.data, **self._entry.options}
+
+    def _power_w(self, conf: dict) -> float | None:
+        st = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
+        if st is None:
+            return None
+        try:
+            frac = min(1.0, float(st.state) / POOLEX_COMPRESSOR_MAX)
+        except ValueError:
+            return None
+        return frac * float(conf.get(CONF_POOLEX_MAX_W, DEFAULT_POOLEX_MAX_W))
+
+    def _inlet_temp(self, conf: dict) -> float | None:
+        st = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
+        if st is None:
+            return None
+        try:
+            return float(st.attributes["current_temperature"])
+        except (TypeError, ValueError, KeyError):
+            return None
+
+    def _conditions(self, conf: dict) -> bool:
+        """Compressor stookt én circulatie draait."""
+        pump = self.hass.states.get(conf[CONF_PUMP_FAN])
+        w = self._power_w(conf)
+        return pump is not None and pump.state == "on" and (
+            w is not None and w > 0
+        )
+
+    def _mixing(self) -> bool:
+        for ent in self.MIX_PUMPS:
+            st = self.hass.states.get(ent)
+            if st is not None and st.state == "on":
+                return True
+        return False
+
+    # --- cyclus-state-machine ----------------------------------------
+
+    def _tick(self) -> None:
+        now = time.monotonic()
+        conf = self._conf()
+
+        # Wh integreren (links-Riemann) zolang de cyclus loopt
+        if self._cycle and self._last_w is not None and self._last_ts is not None:
+            dt_h = (now - self._last_ts) / 3600.0
+            if 0 < dt_h < 1:
+                self._cum_wh += self._last_w * dt_h
+        self._last_ts = now
+        self._last_w = self._power_w(conf)
+
+        # Massagepomp: on -> off markeert einde van een meng-puls
+        mixing = self._mixing()
+        if self._mix_active and not mixing:
+            self._mix_end = now
+        self._mix_active = mixing
+
+        heating = self._conditions(conf)
+        if heating and not self._cycle:
+            # cyclus-start: buffer/integratie op nul
+            self._cycle = True
+            self._cum_wh = 0.0
+            self._first_temp = self._first_wh = None
+            self._last_temp = self._last_wh = None
+        elif not heating and self._cycle:
+            self._cycle = False
+            self._finalize()
+
+        # Post-mix-venster: 15-180 s na einde van een meng-puls
+        in_window = (
+            self._cycle
+            and not mixing
+            and self.MIX_DELAY_S <= now - self._mix_end <= self.MIX_WINDOW_S
+        )
+        if in_window:
+            temp = self._inlet_temp(conf)
+            if temp is not None:
+                if self._first_temp is None:
+                    self._first_temp = temp
+                    self._first_wh = self._cum_wh
+                else:
+                    self._last_temp = temp
+                    self._last_wh = self._cum_wh
+
+    def _finalize(self) -> None:
+        """Cyclus afgelopen — COP uitrekenen uit de markers."""
+        if (
+            self._first_temp is None
+            or self._last_temp is None
+            or self._first_wh is None
+            or self._last_wh is None
+        ):
+            return
+        dt_k = self._last_temp - self._first_temp
+        d_wh = self._last_wh - self._first_wh
+        if d_wh <= 10 or dt_k <= 0:  # min 10 Wh + positieve stijging
+            return
+        kwh_th = dt_k * TUB_HEAT_CAPACITY / 3.6e6
+        kwh_el = d_wh / 1000.0
+        self._cop = round(kwh_th / kwh_el, 1)
+        self._cycle_dt = round(dt_k, 1)
+        self._cycle_kwh_th = round(kwh_th, 2)
+        self._cycle_kwh_el = round(kwh_el, 3)
 
 
 class JacuzziPoolexFaultSensor(SensorEntity):
