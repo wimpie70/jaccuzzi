@@ -97,6 +97,9 @@
       },
       "poolex_inlet_temperature": {
         "name": "Poolex inlaat"
+      },
+      "poolex_delta_t": {
+        "name": "Poolex ΔT"
       }
     },
     "switch": {

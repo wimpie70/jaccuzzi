@@ -59,6 +59,7 @@ DEFAULT_MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
 PUMP_RUNON_S = 180       # nadraaitijd pomp
 FAILSAFE_DELAY_S = 15    # compressor aan + pomp uit -> pomp aan
 MAINT_PUMP_GRACE_S = 90  # Gecko check-cyclus (~40 s) niet tegenwerken
+MAINT_PUMP_RETRY_S = 300  # pack weigert turn_off tijdens eigen cyclus
 PROBLEM_DELAY_S = 60     # fault-bit aan voordat we melden
 NO_COMPRESSOR_S = 600    # warmtevraag zonder compressor -> verdacht
 EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers

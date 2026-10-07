@@ -99,6 +99,8 @@ cards:
         name: Wisselaar inlaat
       - entity: sensor.pool_heat_pump_outflow_temperature
         name: Uitlaat
+      - entity: sensor.jacuzzi_poolex_delta_t
+        name: ΔT (uit-in)
       - entity: sensor.pool_heat_pump_vent_temperature
         name: Heetgas
       - entity: sensor.pool_heat_pump_coil_temperature

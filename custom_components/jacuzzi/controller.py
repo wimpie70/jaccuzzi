@@ -52,6 +52,7 @@ from .const import (
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
     MAINT_PUMP_GRACE_S,
+    MAINT_PUMP_RETRY_S,
     MIX_PUMPS,
     NO_COMPRESSOR_S,
     PEAK_MODE_OFF,
@@ -112,6 +113,7 @@ class JacuzziController:
         self._early_restored = False     # PV-einde al gedaan dit venster
         self._startup_restore_checked = False  # eenmalig: achtergebleven
         #                                      piek-setpoint herstellen
+        self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -412,26 +414,43 @@ class JacuzziController:
             # Pas als de pomp langer dan de grace-periode aanhoudt —
             # geen check-cyclus meer — zetten we hem terug. De melding
             # gaat wél meteen weg zodra de pomp aan gaat.
-            pump_on = pump.state == "on"
+            now = time.monotonic()
+            pumps_on = [
+                ent
+                for ent in (self.conf["pump_fan"], *MIX_PUMPS)
+                if (st := self.hass.states.get(ent)) is not None
+                and st.state == "on"
+            ]
             self._notify_once(
                 "maintenance_pump",
-                pump_on,
+                bool(pumps_on),
                 "Jacuzzi: pomp aan tijdens onderhoud",
                 "De Gecko startte een circulatie-cyclus. Korte check-runs "
                 "laten we; > 90 s wordt hij teruggezet. Bij een lege kuip: "
                 "groep uitschakelen in de meterkast.",
             )
-            if self._since_true(
-                "maint_pump_grace", pump_on, MAINT_PUMP_GRACE_S
-            ):
+            for ent in pumps_on:
+                if not self._since_true(
+                    f"maint_pump_grace_{ent}", True, MAINT_PUMP_GRACE_S
+                ):
+                    continue
+                # De pack weigert turn_off tijdens zijn eigen cycli
+                # ("active non-user initiators") — retry met backoff i.p.v.
+                # elke tick een gefaalde call + ERROR.
+                last = self._maint_off_retry.get(ent, 0.0)
+                if now - last < MAINT_PUMP_RETRY_S:
+                    continue
+                self._maint_off_retry[ent] = now
                 _LOGGER.warning(
-                    "Circulatiepomp > %d s aan tijdens onderhoud — uitgezet. "
+                    "%s > %d s aan tijdens onderhoud — uitgezet. "
                     "Lege kuip? Schakel de groep uit in de meterkast.",
+                    ent,
                     MAINT_PUMP_GRACE_S,
                 )
-                await self._async_call(
-                    "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
-                )
+                await self._async_call("fan", "turn_off", {"entity_id": ent})
+            for ent in (self.conf["pump_fan"], *MIX_PUMPS):
+                if ent not in pumps_on:
+                    self._since_true(f"maint_pump_grace_{ent}", False, 0)
             # Watercare handhaven: de pack (of iemand) kan 'm verzetten
             # tijdens een check-cyclus — na de grace-periode terug op de
             # bewaarde standby-stand.

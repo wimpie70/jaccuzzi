@@ -32,6 +32,7 @@ ENERGY_SENSORS = (
 
 # tuya-local entities van de Poolex (vaste id's in deze setup)
 POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
+POOLEX_OUTLET_SENSOR = "sensor.pool_heat_pump_outflow_temperature"
 POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
 POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
@@ -49,6 +50,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         JacuzziTubTempSensor(entry),
         JacuzziPoolexInletTempSensor(entry),
+        JacuzziPoolexDeltaTSensor(entry),
         JacuzziPoolexFanSensor(entry),
         JacuzziPoolexFaultSensor(entry),
         JacuzziPoolexCompressorSensor(entry),
@@ -148,6 +150,71 @@ class JacuzziPoolexInletTempSensor(SensorEntity):
 
     @callback
     def _async_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziPoolexDeltaTSensor(SensorEntity):
+    """Temperatuurstijging over de warmtewisselaar (uitlaat - inlaat).
+
+    Inlaat = climate.<poolex>.current_temperature, uitlaat = DP25 via
+    tuya-local. Samen met de flow geeft dit het afgegeven vermogen —
+    eerste stap richting een COP-inschatting.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "poolex_delta_t"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:thermometer-lines"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de config entry."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_poolex_delta_t"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """uitlaat - inlaat; None als een van beide ontbreekt."""
+        conf = {**self._entry.data, **self._entry.options}
+        climate = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
+        outlet = self.hass.states.get(POOLEX_OUTLET_SENSOR)
+        if climate is None or outlet is None or outlet.state in (
+            "unavailable",
+            "unknown",
+        ):
+            return None
+        try:
+            return round(
+                float(outlet.state)
+                - float(climate.attributes["current_temperature"]),
+                1,
+            )
+        except (TypeError, ValueError, KeyError):
+            return None
+
+    async def async_added_to_hass(self) -> None:
+        """Volg uitlaat-sensor én inlaat (climate-attribuut)."""
+        conf = {**self._entry.data, **self._entry.options}
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass,
+                [POOLEX_OUTLET_SENSOR, conf[CONF_POOLEX_CLIMATE]],
+                self._on_source,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_source)
+        )
+
+    @callback
+    def _on_source(self, *_args) -> None:
         self.async_write_ha_state()
 
 
