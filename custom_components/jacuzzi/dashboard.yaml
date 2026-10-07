@@ -214,6 +214,10 @@ views:
       title: Verbruik
       show_header_toggle: false
       entities:
+      - entity: sensor.jacuzzi_poolex_power_estimate
+        name: Poolex vermogen (geschat)
+      - entity: number.jacuzzi_poolex_max_watts
+        name: Max opgenomen vermogen
       - entity: sensor.jacuzzi_poolex_energy
         name: Poolex (kWh)
       - entity: sensor.jacuzzi_energy

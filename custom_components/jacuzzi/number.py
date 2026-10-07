@@ -14,9 +14,11 @@ from . import JacuzziConfigEntry
 from .const import (
     CONF_MIX_INTERVAL_MIN,
     CONF_MIX_PULSE_S,
+    CONF_POOLEX_MAX_W,
     CONF_SOLAR_MIN_W,
     DEFAULT_MIX_INTERVAL_MIN,
     DEFAULT_MIX_PULSE_S,
+    DEFAULT_POOLEX_MAX_W,
     DEFAULT_SOLAR_MIN_W,
     DOMAIN,
 )
@@ -39,6 +41,17 @@ async def async_setup_entry(
                 min_v=0.0,
                 max_v=10000.0,
                 step=100.0,
+                unit="W",
+            ),
+            JacuzziOptionNumber(
+                entry,
+                key=CONF_POOLEX_MAX_W,
+                default=DEFAULT_POOLEX_MAX_W,
+                translation_key="poolex_max_watts",
+                icon="mdi:lightning-bolt",
+                min_v=500.0,
+                max_v=4000.0,
+                step=50.0,
                 unit="W",
             ),
             JacuzziOptionNumber(

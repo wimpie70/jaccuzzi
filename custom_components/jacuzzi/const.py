@@ -20,6 +20,7 @@ CONF_NORMAL_SETPOINT = "normal_setpoint"
 CONF_SOLAR_SENSOR = "solar_sensor"
 CONF_SOLAR_MIN_W = "solar_min_watts"
 CONF_POOLEX_POWER_SENSOR = "poolex_power_sensor"
+CONF_POOLEX_MAX_W = "poolex_max_watts"
 CONF_JACUZZI_POWER_SENSOR = "jacuzzi_power_sensor"
 CONF_POOLEX_ALWAYS_ON = "poolex_always_on"
 CONF_MIX_ENABLED = "mix_enabled"
@@ -47,6 +48,7 @@ DEFAULT_PEAK_SETPOINT = 4.0       # °C — laagste setpoint, unit idle
 DEFAULT_NORMAL_SETPOINT = 38.0    # °C — fallback als geen opgeslagen setpoint
 DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
 DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
+DEFAULT_POOLEX_MAX_W = 1600       # W bij duty 100% — kalibreer met meter
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
