@@ -310,12 +310,13 @@ class JacuzziController:
             )
         else:
             # clamp: de unit accepteert in heat-mode min. ~15 °C
-            # (tuya-local validatie), ook al is 4 °C het DP-minimum.
-            # min_temp-attr kan bij een herstelde state ontbreken ->
-            # val terug op de bekende unit-floor (15 °C), niet op 4 °C.
+            # (tuya-local validatie). min_temp-attr rapporteert het
+            # DP-minimum (~4 °C) — lager dan de service-floor. Daarom
+            # harde floor op 15 °C, ongeacht de attr.
             peak = max(
                 self.conf.get(CONF_PEAK_SETPOINT, 4.0),
                 _attr_float(poolex, "min_temp", 15.0),
+                15.0,
             )
             current = _attr_float(poolex, "temperature", 38.0)
             # niet overschrijven als we midden in de piek (her)starten:
@@ -514,6 +515,7 @@ class JacuzziController:
                 peak_sp = max(
                     self.conf.get(CONF_PEAK_SETPOINT, 4.0),
                     _attr_float(poolex, "min_temp", 15.0),
+                    15.0,
                 )
                 if cur <= peak_sp + 0.5:
                     _LOGGER.warning(
