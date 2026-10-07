@@ -51,6 +51,7 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
+    FAULT_GRACE_S,
     MAINT_PUMP_GRACE_S,
     MAINT_PUMP_RETRY_S,
     MIX_PUMPS,
@@ -113,6 +114,9 @@ class JacuzziController:
         self._early_restored = False     # PV-einde al gedaan dit venster
         self._startup_restore_checked = False  # eenmalig: achtergebleven
         #                                      piek-setpoint herstellen
+        self._prev_compressor_on = False  # vorige tick (stop-detectie)
+        self._prev_pump_on = False        # vorige tick (stop-detectie)
+        self._fault_grace_until = 0.0     # monotonic ts einde fault-grace
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._unsubs = []
 
@@ -570,6 +574,19 @@ class JacuzziController:
         pump_on = pump.state == "on"
         self.warmtevraag = not poolex_off and tub_temp < setpoint - self.conf["temp_margin"]
 
+        # Verwachte-fault grace: als compressor of circulatiepomp stopt
+        # (setpoint verlaagd, vraag weg, wij zetten de pomp uit) kan de
+        # unit kort daarna een d1-flow-fault zetten. Dat is gevolg van
+        # het stoppen, geen storing -> fault-melding even onderdrukken.
+        # Andersom (pomp aan, geen flow) blijft wél een echte storing.
+        now_mono = time.monotonic()
+        if (self._prev_compressor_on and not compressor_on) or (
+            self._prev_pump_on and not pump_on
+        ):
+            self._fault_grace_until = now_mono + FAULT_GRACE_S
+        self._prev_compressor_on = compressor_on
+        self._prev_pump_on = pump_on
+
         # Onthoud dat de compressor echt gedraaid heeft — de nadraai-timer
         # (comp_idle) mag alleen tellen ná een echte run, anders is
         # 'compressor al 3 min uit' permanent waar en slaat de pomp direct af.
@@ -629,7 +646,6 @@ class JacuzziController:
         # kort aanzetten — roert de gestratificeerde lagen door elkaar
         # zodat kuip- en inlaat-sensor de echte bulk-temp zien.
         # Alleen als de compressor draait én er circulatie is.
-        now_mono = time.monotonic()
         mix_enabled = self.conf.get(CONF_MIX_ENABLED, DEFAULT_MIX_ENABLED)
         mix_interval = float(
             self.conf.get(CONF_MIX_INTERVAL_MIN, DEFAULT_MIX_INTERVAL_MIN)
@@ -692,11 +708,20 @@ class JacuzziController:
             "zet hem op heat (switch Poolex aan/uit) om weer te stoken.",
         )
 
-        # Monitor 1: echte fault-bit van de unit
+        # Monitor 1: echte fault-bit van de unit. Binnen de stop-grace
+        # (compressor/pomp zojuist gestopt) is een flow-fault verwacht —
+        # loggen maar niet melden.
         problem_active = problem is not None and problem.state == "on"
+        in_grace = now_mono < self._fault_grace_until
+        if problem_active and in_grace:
+            _LOGGER.info(
+                "Poolex fault-bit aan binnen stop-grace — verwacht, geen melding"
+            )
         self._notify_once(
             "problem",
-            self._since_true("problem", problem_active, PROBLEM_DELAY_S),
+            self._since_true(
+                "problem", problem_active and not in_grace, PROBLEM_DELAY_S
+            ),
             "Jacuzzi: Poolex fault",
             "De Poolex rapporteert een probleem (problem-sensor aan). "
             "Check de unit — bij d1: te weinig doorstroom, bypass verder dichtknijpen.",
