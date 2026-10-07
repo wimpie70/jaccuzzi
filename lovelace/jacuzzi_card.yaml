@@ -6,8 +6,9 @@
 #
 # Integraties: jacuzzi (status) + tuya-local (Poolex) + gecko (kuip).
 #
-# Layout: geen masonry maar vaste kolommen (vertical-stacks in een
-# horizontal-stack) — de volgorde hieronder is de werkelijke plaatsing.
+# Layout: vaste 3-koloms (vertical-stacks in horizontal-stack) —
+# de volgorde hieronder is de werkelijke plaatsing. Let op: op smal
+# scherm (mobiel) knellen de kolommen in; ze breken niet om.
 
 type: vertical-stack
 cards:
@@ -49,23 +50,39 @@ cards:
       Let op: de Gecko-pack doet zelf flow-checks — bij een lege kuip
       moet de groep uit in de meterkast.
 
-  - type: entities
-    title: Onderhoud
-    entities:
-      - entity: switch.jacuzzi_maintenance
-        name: Onderhoudsmodus
-
   - type: horizontal-stack
     cards:
-      # ---- Kolom 1: thermostaten + status-overzicht ----
+      # ---- Kolom 1: onderhoud + thermostaten + piek ----
       - type: vertical-stack
         cards:
-          - type: thermostat
-            entity: climate.jaccuzzi_thermostat_1
-            name: Kuip
-          - type: thermostat
-            entity: climate.pool_heat_pump
-            name: Poolex
+          - type: entities
+            title: Onderhoud
+            entities:
+              - entity: switch.jacuzzi_maintenance
+                name: Onderhoudsmodus
+          - type: horizontal-stack
+            cards:
+              - type: thermostat
+                entity: climate.jaccuzzi_thermostat_1
+                name: Kuip
+              - type: thermostat
+                entity: climate.pool_heat_pump
+                name: Poolex
+          - type: entities
+            title: Piekblokkade
+            entities:
+              - entity: time.jacuzzi_peak_start
+                name: Start
+              - entity: time.jacuzzi_peak_end
+                name: Einde
+              - entity: number.jacuzzi_solar_surplus_threshold
+                name: PV-drempel
+              - entity: select.jaccuzzi_watercare_mode
+                name: Watercare (piek = Super Savings)
+
+      # ---- Kolom 2: status + aan/uit-historie + meng-puls ----
+      - type: vertical-stack
+        cards:
           - type: glance
             title: Gecko — circulatie
             entities:
@@ -88,10 +105,6 @@ cards:
                 name: Compressor
               - entity: binary_sensor.pool_heat_pump_problem
                 name: Fault
-
-      # ---- Kolom 2: aan/uit-historie + regelinstellingen ----
-      - type: vertical-stack
-        cards:
           - type: history-graph
             title: Aan/uit (24 uur)
             hours_to_show: 24
@@ -119,17 +132,6 @@ cards:
               - entity: sensor.jacuzzi_poolex_fan_speed
                 name: Ventilator %
           - type: entities
-            title: Piekblokkade
-            entities:
-              - entity: time.jacuzzi_peak_start
-                name: Start
-              - entity: time.jacuzzi_peak_end
-                name: Einde
-              - entity: number.jacuzzi_solar_surplus_threshold
-                name: PV-drempel
-              - entity: select.jaccuzzi_watercare_mode
-                name: Watercare (piek = Super Savings)
-          - type: entities
             title: Meng-puls
             show_header_toggle: false
             entities:
@@ -140,9 +142,25 @@ cards:
               - entity: number.jacuzzi_mixing_pulse_duration
                 name: Pulsduur
 
-      # ---- Kolom 3: temperatuur-historie + sturing/verbruik ----
+      # ---- Kolom 3: kuip-instellingen + temp + sturing ----
       - type: vertical-stack
         cards:
+          - type: entities
+            title: Gecko — kuip
+            show_header_toggle: false
+            entities:
+              - entity: fan.jaccuzzi_waterfall
+                name: Circulatiepomp
+              - entity: fan.jaccuzzi_pump_1
+                name: Massagepomp 1
+              - entity: fan.jaccuzzi_pump_2
+                name: Massagepomp 2
+              - entity: light.jaccuzzi_light_1
+                name: Verlichting
+              - entity: select.jaccuzzi_watercare_mode
+                name: Watercare
+              - entity: binary_sensor.jaccuzzi_spa_status
+                name: Spa status
           - type: history-graph
             title: Temperaturen (24 uur)
             hours_to_show: 24
@@ -185,19 +203,3 @@ cards:
                 name: Poolex (kWh)
               - entity: sensor.jacuzzi_energy
                 name: Jacuzzi (kWh)
-          - type: entities
-            title: Gecko — kuip
-            show_header_toggle: false
-            entities:
-              - entity: fan.jaccuzzi_waterfall
-                name: Circulatiepomp
-              - entity: fan.jaccuzzi_pump_1
-                name: Massagepomp 1
-              - entity: fan.jaccuzzi_pump_2
-                name: Massagepomp 2
-              - entity: light.jaccuzzi_light_1
-                name: Verlichting
-              - entity: select.jaccuzzi_watercare_mode
-                name: Watercare
-              - entity: binary_sensor.jaccuzzi_spa_status
-                name: Spa status
