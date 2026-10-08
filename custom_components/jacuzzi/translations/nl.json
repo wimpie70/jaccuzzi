@@ -145,6 +145,9 @@
       },
       "poolex_max_watts": {
         "name": "Poolex max opgenomen vermogen"
+      },
+      "inlet_compensation_k": {
+        "name": "Inlaat sensorcompensatie"
       }
     },
     "time": {

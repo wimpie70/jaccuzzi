@@ -145,6 +145,9 @@
       },
       "poolex_max_watts": {
         "name": "Poolex max input power"
+      },
+      "inlet_compensation_k": {
+        "name": "Inlet sensor compensation"
       }
     },
     "time": {

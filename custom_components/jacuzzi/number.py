@@ -12,10 +12,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .const import (
+    CONF_INLET_COMPENSATION,
     CONF_MIX_INTERVAL_MIN,
     CONF_MIX_PULSE_S,
     CONF_POOLEX_MAX_W,
     CONF_SOLAR_MIN_W,
+    DEFAULT_INLET_COMPENSATION_K,
     DEFAULT_MIX_INTERVAL_MIN,
     DEFAULT_MIX_PULSE_S,
     DEFAULT_POOLEX_MAX_W,
@@ -64,6 +66,17 @@ async def async_setup_entry(
                 max_v=120.0,
                 step=5.0,
                 unit="min",
+            ),
+            JacuzziOptionNumber(
+                entry,
+                key=CONF_INLET_COMPENSATION,
+                default=DEFAULT_INLET_COMPENSATION_K,
+                translation_key="inlet_compensation_k",
+                icon="mdi:thermometer-lines",
+                min_v=0.0,
+                max_v=0.5,
+                step=0.01,
+                unit="K/K",
             ),
             JacuzziOptionNumber(
                 entry,

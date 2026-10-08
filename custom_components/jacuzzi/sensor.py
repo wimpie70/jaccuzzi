@@ -44,8 +44,13 @@ POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
 POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
 POOLEX_FAN_MAX_RPM = 1000.0
-# compressor duty cycle is 0-1500 ruw -> /15 = %
-POOLEX_COMPRESSOR_MAX = 1500.0
+# compressor duty cycle is een percentage 0-100 (waargenomen 16-76
+# tijdens stoken, exact 0 idle). Eerst aangenomen 0-1500 ruw, maar dat
+# gaf ~75 W bij duty 70 terwijl de compressor echt ~1 kW trok -> COP
+# zou onmogelijk hoog uitvallen. Klopt de schaal toch niet, dan toont
+# power_estimate het meteen (te hoog/laag) -> kalibratie blijft aan de
+# gebruiker via poolex_max_watts.
+POOLEX_COMPRESSOR_MAX = 100.0
 # Kuip als calorimeter: kg water x 4.186 kJ/kgK -> J per K
 TUB_MASS_KG = 1500.0
 TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K

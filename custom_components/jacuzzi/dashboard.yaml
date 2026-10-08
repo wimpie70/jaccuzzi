@@ -206,6 +206,8 @@ views:
         name: Element actief
       - entity: number.pool_heat_pump_sampling_interval
         name: Meetinterval (C9)
+      - entity: number.jacuzzi_inlet_sensor_compensation
+        name: Inlaatcompensatie (K/K)
       - entity: switch.jacuzzi_poolex_always_on
         name: Altijd aan (vorstbeveiliging)
     - type: entities

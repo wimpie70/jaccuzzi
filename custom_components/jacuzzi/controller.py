@@ -29,6 +29,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_INLET_COMPENSATION,
     CONF_JACUZZI_CLIMATE,
     CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
@@ -47,9 +48,11 @@ from .const import (
     COOLDOWN_MIN_DROP_K,
     COOLDOWN_MIN_H,
     DEFAULT_AMBIENT_SENSOR,
+    DEFAULT_INLET_COMPENSATION_K,
     DEFAULT_MIX_ENABLED,
     DEFAULT_MIX_INTERVAL_MIN,
     DEFAULT_MIX_PULSE_S,
+    DEFAULT_NORMAL_SETPOINT,
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
     EVAL_INTERVAL_S,
@@ -62,13 +65,17 @@ from .const import (
     MAINT_PUMP_RETRY_S,
     MIX_PUMPS,
     NO_COMPRESSOR_S,
+    OVERHEAT_MARGIN_K,
     PEAK_MODE_OFF,
     POOLEX_OFF_GUARD_S,
+    POOLEX_SETPOINT_FLOOR,
     PROBLEM_DELAY_S,
     PUMP_CMD_DEBOUNCE_S,
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
     SOLAR_SURPLUS_S,
+    SP_SUPPRESS_REST_S,
+    SP_SUPPRESS_RUN_S,
     TUB_WATER_KG,
     UNREACHABLE_S,
 )
@@ -120,14 +127,21 @@ class JacuzziController:
         self._mix_entity: str | None = None  # pomp die nu pulseert
         self._peak_active = False        # piek-blok is toegepast
         self._early_restored = False     # PV-einde al gedaan dit venster
-        self._startup_restore_checked = False  # eenmalig: achtergebleven
-        #                                      piek-setpoint herstellen
         self._flow_lockout = False       # flow-fault: geen auto-aanzet pomp
         self._flow_saved_watercare: str | None = None  # watercare vóór Away
         self._pump_cmd_at = 0.0          # monotonic ts laatste pomp-commando
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._cool: dict | None = None   # lopend warmteverlies-meetvenster
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
+        # Eigen stookdoel los van de Poolex-attr: wij schrijven zelf de
+        # vloer-waarde (15 °C) weg als er geen vraag is, dus de live attr
+        # is dan geen betrouwbaar doel meer. Alleen waardes boven de
+        # vloer adopteren we (gebruiker/app/onze eigen restore).
+        self._heat_setpoint = float(
+            conf.get(CONF_NORMAL_SETPOINT, DEFAULT_NORMAL_SETPOINT)
+        )
+        self._demand_suppressed = False  # wij hebben setpoint laag gezet
+        self._suppress_at = 0.0          # monotonic ts laatste wissel
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         self._unsubs = []
 
@@ -429,11 +443,12 @@ class JacuzziController:
                 _attr_float(poolex, "min_temp", 15.0),
                 15.0,
             )
-            current = _attr_float(poolex, "temperature", 38.0)
+            # _heat_setpoint is het echte doel — de live attr kan al op
+            # de vloer staan door demand-onderdrukking.
             # niet overschrijven als we midden in de piek (her)starten:
             # vergelijk met het GECLAMPTE piek-niveau, niet de config
-            if current > peak + 0.5:
-                self._peak_saved_setpoint = current
+            if self._heat_setpoint > peak + 0.5:
+                self._peak_saved_setpoint = self._heat_setpoint
             ok = await self._async_call(
                 "climate",
                 "set_temperature",
@@ -465,18 +480,23 @@ class JacuzziController:
             restore = (
                 self._peak_saved_setpoint
                 if self._peak_saved_setpoint is not None
-                else self.conf.get(CONF_NORMAL_SETPOINT, 38.0)
+                else self._heat_setpoint
             )
-            ok = await self._async_call(
-                "climate",
-                "set_temperature",
-                {
-                    "entity_id": self.conf["poolex_climate"],
-                    "temperature": restore,
-                },
-            )
-            if ok:
+            if self._demand_suppressed:
+                # geen vraag: setpoint blijft op de vloer; het
+                # onderdrukkings-blok herstelt zodra de vraag terugkeert
                 self._peak_saved_setpoint = None
+            else:
+                ok = await self._async_call(
+                    "climate",
+                    "set_temperature",
+                    {
+                        "entity_id": self.conf["poolex_climate"],
+                        "temperature": restore,
+                    },
+                )
+                if ok:
+                    self._peak_saved_setpoint = None
         ok = await self._set_watercare("watercare_normal") and ok
         # False -> evaluate roept _on_peak_end de volgende tick opnieuw
         self._peak_active = not ok
@@ -617,24 +637,10 @@ class JacuzziController:
             self._early_restored = False
             if self._peak_active:
                 await self._on_peak_end(None)  # zet _peak_active zelf
-            elif not self._startup_restore_checked:
-                # eenmalig: als de piek-einde-trigger ooit gemist is (HA
-                # down) kan de Poolex op zijn piek-setpoint blijven staan
-                # -> herstel
-                self._startup_restore_checked = True
-                cur = _attr_float(poolex, "temperature", 99.0)
-                peak_sp = max(
-                    self.conf.get(CONF_PEAK_SETPOINT, 4.0),
-                    _attr_float(poolex, "min_temp", 15.0),
-                    15.0,
-                )
-                if cur <= peak_sp + 0.5:
-                    _LOGGER.warning(
-                        "Poolex-setpoint %.1f = piek-niveau buiten piekvenster "
-                        "(gemist piek-einde?) — herstellen naar normaal",
-                        cur,
-                    )
-                    await self._on_peak_end(None)
+            # NB: de oude 'startup restore'-check is vervallen — een
+            # vloer-setpoint buiten piek is nu ook de legitieme
+            # demand-onderdrukking. Als er warmtevraag is herstelt het
+            # onderdrukkings-blok vanzelf; zoniet is laag correct.
 
         poolex_off = poolex.state == "off"
 
@@ -665,7 +671,38 @@ class JacuzziController:
         else:
             self._notify_once("poolex_autoon", False, "", "")
 
-        setpoint = _attr_float(poolex, "temperature", 38.0)
+        # Ons stookdoel is niet meer de live Poolex-attr: wij schrijven
+        # zelf de vloer (15 °C) weg als de vraag wegvalt. Daarom
+        # adopteren we alleen waardes boven de vloer als gebruikersdoel.
+        # Staat de attr hoog terwijl wij onderdrukken -> iemand anders
+        # (app/gebruiker/piek-herstel) heeft overgenomen -> loslaten.
+        # De 60 s-grace na onze eigen write voorkomt dat een trage
+        # tuya-attr-update als 'externe wijziging' terugleest.
+        live_sp = _attr_float(poolex, "temperature", 0.0)
+        if live_sp > POOLEX_SETPOINT_FLOOR + 0.5:
+            if (
+                self._demand_suppressed
+                and time.monotonic() - self._suppress_at > 60
+            ):
+                _LOGGER.info(
+                    "Poolex-setpoint extern naar %.1f gezet — "
+                    "demand-onderdrukking losgelaten",
+                    live_sp,
+                )
+                self._demand_suppressed = False
+            if not self._peak_active:
+                self._heat_setpoint = live_sp
+        elif (
+            not self._demand_suppressed
+            and not self._peak_active
+            and time.monotonic() - self._suppress_at > 60
+            and 0.0 < live_sp <= POOLEX_SETPOINT_FLOOR + 0.5
+        ):
+            # attr staat op de vloer maar wij hebben hem niet gezet —
+            # bv. restart tijdens onderdrukking: vlag herstellen zodat
+            # een nieuwe vraag het setpoint weer omhoog kan zetten.
+            self._demand_suppressed = True
+        setpoint = self._heat_setpoint
         tub_temp = _attr_float(jacuzzi, "current_temperature")
         compressor_on = _float(compressor) > 0
         pump_on = pump.state == "on"
@@ -680,13 +717,32 @@ class JacuzziController:
         # water dat uit de kuip komt — de beste bulk-temp zodra er ~30 s
         # circulatie is geweest. Zonder flow is de Gecko-buismeeting de
         # fallback (ook gestratificeerd, maar beter dan niets).
+        # Let op: DP16 zit thermisch gekoppeld aan de buitenlucht —
+        # bij stilstaand water zakt hij volledig naar ambient (gemeten:
+        # 18 °C bij 30 °C water). De meetfout is dus geen vaste offset
+        # maar evenredig met (inlaat - buiten): recorder-data geeft
+        # k ~ 0.14 (inlaat ~1.7 K laag bij 25 °C, ~4.5 K bij 43 °C).
+        # Ons doel geldt voor het echte water, dus corrigeren we:
+        #   demand = inlaat + k * (inlaat - buiten)
+        # Kalibreerbaar via number 'Inlaat sensorcompensatie'.
         inlet_temp = _attr_float(poolex, "current_temperature")
         inlet_valid = poolex.state not in ("unavailable", "unknown") and (
             1.0 <= inlet_temp <= 45.0
         )
         flow_ok = self._since_true("flow_established", pump_on, 30)
         if inlet_valid and flow_ok:
-            demand_temp, demand_valid, bron = inlet_temp, True, "inlaat"
+            amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
+            amb_ok = amb_st is not None and amb_st.state not in (
+                "unavailable", "unknown",
+            )
+            k = float(self.conf.get(
+                CONF_INLET_COMPENSATION, DEFAULT_INLET_COMPENSATION_K
+            ))
+            comp = (
+                k * max(0.0, inlet_temp - _float(amb_st)) if amb_ok else 0.0
+            )
+            demand_temp = inlet_temp + comp
+            demand_valid, bron = True, f"inlaat+{comp:.1f}"
         else:
             demand_temp, demand_valid, bron = tub_temp, tub_valid, "kuip"
         self.warmtevraag = (
@@ -695,6 +751,84 @@ class JacuzziController:
             and demand_temp < setpoint - self.conf["temp_margin"]
         )
         self._track_cooldown(tub_temp, tub_valid, pump_on, compressor_on)
+
+        # Demand-remming: de Poolex regelt zijn compressor zélf op DP16,
+        # maar die leest te laag (zie compensatie hierboven) -> de unit
+        # zou doorstoken (waargenomen: kuip 44.5 °C bij doel 38 °C). Wij
+        # zijn de thermostaat: vraag weg -> setpoint naar de vloer; de
+        # unit blijft op 'heat' (telemetrie + vorstbeveiliging lopen
+        # door) maar de compressor krijgt nooit vraag. Vraag terug ->
+        # setpoint herstellen. Dwell-tijden voorkomen kort-cyclen:
+        # min. 30 min laag (compressor-rust) en min. 15 min hoog.
+        # De kuip-oververhitting gaat vóór op de dwell — dat is het
+        # vangnet als de compensatie of inlaat-meting fout zit.
+        overheated = tub_valid and tub_temp > setpoint + OVERHEAT_MARGIN_K
+        if self._demand_suppressed:
+            if (
+                self.warmtevraag
+                and not self._peak_active
+                and time.monotonic() - self._suppress_at
+                >= SP_SUPPRESS_REST_S
+                and await self._async_call(
+                    "climate",
+                    "set_temperature",
+                    {
+                        "entity_id": self.conf["poolex_climate"],
+                        "temperature": setpoint,
+                    },
+                )
+            ):
+                _LOGGER.info(
+                    "Warmtevraag terug — Poolex-setpoint hersteld naar %.1f",
+                    setpoint,
+                )
+                self._demand_suppressed = False
+                self._suppress_at = time.monotonic()
+        elif (
+            not self._peak_active
+            and not poolex_off
+            and not self._flow_lockout
+            and (
+                overheated
+                or (
+                    demand_valid
+                    and not self.warmtevraag
+                    and time.monotonic() - self._suppress_at
+                    >= SP_SUPPRESS_RUN_S
+                )
+            )
+            and await self._async_call(
+                "climate",
+                "set_temperature",
+                {
+                    "entity_id": self.conf["poolex_climate"],
+                    "temperature": POOLEX_SETPOINT_FLOOR,
+                },
+            )
+        ):
+            _LOGGER.info(
+                "%s — Poolex-setpoint naar %.1f (compressor-rem)",
+                "Oververhitting" if overheated
+                else "Doel bereikt (%.1f, bron=%s)",
+                *(() if overheated else (demand_temp, bron)),
+                POOLEX_SETPOINT_FLOOR,
+            )
+            self._demand_suppressed = True
+            self._suppress_at = time.monotonic()
+            if overheated:
+                self._notify_once(
+                    "overheat",
+                    True,
+                    "Jacuzzi: oververhitting",
+                    f"Kuip-temperatuur {tub_temp:.1f} °C is meer dan "
+                    f"{OVERHEAT_MARGIN_K:.1f} K boven het doel "
+                    f"({setpoint:.1f} °C) — Poolex-setpoint naar "
+                    f"{POOLEX_SETPOINT_FLOOR:.0f} °C gezet. De inlaat-"
+                    "sensor van de unit leest te laag; check de "
+                    "compensatie-kalibratie.",
+                )
+        if not overheated:
+            self._notify_once("overheat", False, "", "")
 
         # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
         # komt echt geen water door (lek tussen pomp en flowmeter, of
@@ -925,11 +1059,17 @@ class JacuzziController:
             "Check de unit — bij d1: te weinig doorstroom, bypass verder dichtknijpen.",
         )
 
-        # Monitor 2: warmtevraag zonder compressor = flow-error proxy
+        # Monitor 2: warmtevraag zonder compressor = flow-error proxy.
+        # Niet tijdens demand-onderdrukking: dan is de compressor
+        # bewust stil (setpoint op de vloer / dwell-tijd loopt).
         self._notify_once(
             "no_compressor",
             self._since_true(
-                "no_compressor", self.warmtevraag and not compressor_on, NO_COMPRESSOR_S
+                "no_compressor",
+                self.warmtevraag
+                and not compressor_on
+                and not self._demand_suppressed,
+                NO_COMPRESSOR_S,
             ),
             "Jacuzzi: Poolex mogelijk in storing",
             f"De warmtepomp staat aan en het water is te koud ({tub_temp} °C), "

@@ -28,6 +28,7 @@ CONF_MIX_INTERVAL_MIN = "mix_interval_min"
 CONF_MIX_PULSE_S = "mix_pulse_s"
 CONF_MAINTENANCE = "maintenance"
 CONF_MAINT_SAVED = "maintenance_saved"
+CONF_INLET_COMPENSATION = "inlet_compensation_k"
 
 DEFAULT_POOLEX_CLIMATE = "climate.pool_heat_pump"
 DEFAULT_JACUZZI_CLIMATE = "climate.jaccuzzi_thermostat_1"
@@ -53,6 +54,23 @@ DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
 DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
 DEFAULT_POOLEX_MAX_W = 1600       # W bij duty 100% — kalibreer met meter
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
+
+# Inlaat-compensatie: DP16 zit thermisch gekoppeld aan de buitenlucht
+# (stilstaand water zakt hij naar ambient — waargenomen 18 °C bij 30 °C
+# water). De meetfout is dus geen vaste offset maar ~k × (water-buiten);
+# gemeten uit recorder-data: k ≈ 0.14. demand_temp = inlaat + k ×
+# (inlaat - buiten). Kalibreerbaar via een number-entity.
+DEFAULT_INLET_COMPENSATION_K = 0.14
+
+# Demand-remming via het Poolex-setpoint: de unit regelt zijn
+# compressor zelf op DP16, die te laag leest -> hij zou doorstoken
+# (gezien: kuip 44.5 °C bij doel 38). Wij zijn de echte thermostaat:
+# vraag weg -> setpoint naar de vloer; vraag terug -> herstellen.
+# Dwell-tijden voorkomen kort-cyclen van de compressor.
+POOLEX_SETPOINT_FLOOR = 15.0   # tuya minimum in heat-mode
+SP_SUPPRESS_REST_S = 1800      # setpoint laag >=30 min (compressor-rust)
+SP_SUPPRESS_RUN_S = 900        # setpoint hoog >=15 min (min. stookrun)
+OVERHEAT_MARGIN_K = 1.0        # kuip > doel + dit -> meteen remmen
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")

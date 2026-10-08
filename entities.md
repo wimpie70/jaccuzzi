@@ -131,18 +131,35 @@ schrijven werken.
 
 ## Aandachtspunten (meten = weten)
 
-- **Inlet (DP16) < outlet (DP25) zonder compressor**: met alle pompen
-  aan en echte flow zou `uitlaat ≈ inlaat` moeten zijn — er zit geen
-  warmtebron tussen (buiten/verdamper/heetgas waren allemaal laag).
-  Sensoren zijn identiek aan de Poolex-app, dus geen mapping-fout.
-  Verklaringen om te testen zodra er meer data is:
-  - constante sensor-offset (twee NTC's, ±0.5–1 °C elk) — dan:
-    meet bias bij compressor-uit + alle pompen aan, corrigeer in
-    `poolex_delta_t`
-  - DP16 zit mogelijk buiten de waterstroom (koude pijp-wand/pocket)
-  - check ook of het verschil afhangt van flow (low vs high)
+- **Inlet (DP16) meet te laag — bevestigd, is ambient-koppeling**: uit
+  recorder-data (okt 2026): bij rust + flow is `kuip − inlaat` ~+1.7 K
+  bij 25 °C water maar ~+4.5 K bij 43 °C — dus GEEN vaste offset maar
+  evenredig met (water − buiten), k ≈ 0.14. Bij stilstaand water
+  (pomp uit) zakt de inlaat volledig naar buitentemperatuur (~18 °C
+  bij 30 °C water) — de sensor zit op een ongeïsoleerd leidingdeel of
+  pocket met slecht thermisch contact. Dit is bij Poolex gedocumenteerd
+  gedrag: hun "Mode 1" pompt 2 min/15 min juist om de watertemp te
+  refreshen. Compensatie in de controller:
+  `demand_temp = inlaat + k×(inlaat − buiten)`, k instelbaar via
+  `number.jacuzzi_inlet_sensor_compensation` (default 0.14).
+  NB: er bestaan fabrieks-compensatieparams (O'SPA: C15/C16 ±9 °C,
+  Megaline: P09) — op de IceSpa mogelijk achter service-code.
+- **Uitlaat (DP25) ook licht ambient-gekoppeld**: zakt bij stilstaand
+  water ook, maar langzamer dan DP16 (blijft richting kuip hangen) —
+  kleinere k, minder kritiek omdat hij niet voor warmtevraag gebruikt
+  wordt. De ΔT-sensor (uit−in) is tijdens stoken wel betrouwbaar.
+- **Compressor duty = 0–100%, niet 0–1500**: waargenomen 16–76 tijdens
+  stoken, exact 0 idle. De oude /1500-schaal gaf ~75 W bij duty 70
+  terwijl de compressor echt ~1 kW trok — gecorrigeerd in
+  `POOLEX_COMPRESSOR_MAX = 100.0`.
+- **Poolex stookt door boven doel**: de unit regelt zelf op de
+  (te laag lezende) DP16 — kuip liep op tot 44.5 °C bij doel 38.
+  Sinds 0.7.0 remmen wij via setpoint→vloer (demand-onderdrukking).
 - **Kuip-temp ongewijzigd tijdens mengen**: verwacht dat de
   Gecko-sensor (in de verwarmingsbuis) het water meet dat er langs
   stroomt — als de inlaat al het warme bovenlaagje zag, verandert de
   reading nauwelijks na mengen. Ook: 0.5 °C resolutie + cloud-delay.
   Checken of de kuip-reading wél beweegt op lange meng-runs.
+  Update: `kuip ≈ uitlaat` in alle metingen — de Gecko-sensor zit
+  stroomafwaarts van de Poolex en leest de verhitte stroom, niet de
+  bulk. Alleen bulk-betrouwbaar bij compressor uit + circulatie aan.
