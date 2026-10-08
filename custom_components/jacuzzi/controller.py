@@ -673,10 +673,23 @@ class JacuzziController:
         tub_valid = jacuzzi.state not in ("unavailable", "unknown") and (
             1.0 <= tub_temp <= 45.0
         )
+        # De Poolex-inlaat (climate.current_temperature = DP16) meet
+        # water dat uit de kuip komt — de beste bulk-temp zodra er ~30 s
+        # circulatie is geweest. Zonder flow is de Gecko-buismeeting de
+        # fallback (ook gestratificeerd, maar beter dan niets).
+        inlet_temp = _attr_float(poolex, "current_temperature")
+        inlet_valid = poolex.state not in ("unavailable", "unknown") and (
+            1.0 <= inlet_temp <= 45.0
+        )
+        flow_ok = self._since_true("flow_established", pump_on, 30)
+        if inlet_valid and flow_ok:
+            demand_temp, demand_valid, bron = inlet_temp, True, "inlaat"
+        else:
+            demand_temp, demand_valid, bron = tub_temp, tub_valid, "kuip"
         self.warmtevraag = (
             not poolex_off
-            and tub_valid
-            and tub_temp < setpoint - self.conf["temp_margin"]
+            and demand_valid
+            and demand_temp < setpoint - self.conf["temp_margin"]
         )
         self._track_cooldown(tub_temp, tub_valid, pump_on, compressor_on)
 
@@ -766,7 +779,12 @@ class JacuzziController:
             and not self._flow_lockout
             and self._pump_cmd_ready()
         ):
-            _LOGGER.info("Warmtevraag (%.1f < %.1f) — pomp aan", tub_temp, setpoint)
+            _LOGGER.info(
+                "Warmtevraag (%.1f < %.1f, bron=%s) — pomp aan",
+                demand_temp,
+                setpoint,
+                bron,
+            )
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
             )
@@ -776,7 +794,11 @@ class JacuzziController:
         # comp_idle telt alleen als de compressor echt heeft gedraaid —
         # nadraaien na een run, geen 'al eeuwen idle'.
         off_due = (
-            self._since_true("temp_reached", tub_temp >= setpoint, PUMP_RUNON_S)
+            self._since_true(
+                "temp_reached",
+                demand_valid and demand_temp >= setpoint,
+                PUMP_RUNON_S,
+            )
             or self._since_true("poolex_off", poolex_off, PUMP_RUNON_S)
             or self._since_true(
                 "comp_idle",
