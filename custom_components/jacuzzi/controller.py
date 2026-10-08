@@ -59,6 +59,7 @@ from .const import (
     PEAK_MODE_OFF,
     POOLEX_OFF_GUARD_S,
     PROBLEM_DELAY_S,
+    PUMP_CMD_DEBOUNCE_S,
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
     SOLAR_SURPLUS_S,
@@ -116,6 +117,7 @@ class JacuzziController:
         #                                      piek-setpoint herstellen
         self._flow_lockout = False       # flow-fault: geen auto-aanzet pomp
         self._flow_saved_watercare: str | None = None  # watercare vóór Away
+        self._pump_cmd_at = 0.0          # monotonic ts laatste pomp-commando
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._unsubs = []
 
@@ -157,6 +159,16 @@ class JacuzziController:
         except Exception as err:  # noqa: BLE001 - log en ga door
             _LOGGER.error("%s.%s faalde: %s", domain, service, err)
             return False
+
+    def _pump_cmd_ready(self) -> bool:
+        """True als er weer een pomp-commando mag. Markeert meteen —
+        _async_evaluate kan re-entrant draaien (elke state-change
+        triggert); zonder dit vuurt turn_on per tick tijdens RF-uitval."""
+        now = time.monotonic()
+        if now - self._pump_cmd_at < PUMP_CMD_DEBOUNCE_S:
+            return False
+        self._pump_cmd_at = now
+        return True
 
     def _maybe_reload_gecko(self) -> None:
         """Reload de Gecko config-entry als die in een dode sessie hangt.
@@ -572,7 +584,17 @@ class JacuzziController:
         compressor_on = _float(compressor) > 0
         pump_on = pump.state == "on"
         problem_active = problem is not None and problem.state == "on"
-        self.warmtevraag = not poolex_off and tub_temp < setpoint - self.conf["temp_margin"]
+        # tub_temp kan 0.0 rapporteren tijdens RF-uitval (vessel
+        # DISCONNECTED) — dat is geen echte vraag. Ook 'unavailable'
+        # telt niet: stale data is geen bewijs van koud water.
+        tub_valid = jacuzzi.state not in ("unavailable", "unknown") and (
+            1.0 <= tub_temp <= 45.0
+        )
+        self.warmtevraag = (
+            not poolex_off
+            and tub_valid
+            and tub_temp < setpoint - self.conf["temp_margin"]
+        )
 
         # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
         # komt echt geen water door (lek tussen pomp en flowmeter, of
@@ -635,7 +657,12 @@ class JacuzziController:
         compressor_running = self._since_true(
             "comp_running", compressor_on, FAILSAFE_DELAY_S
         )
-        if compressor_running and pump.state == "off" and not self._flow_lockout:
+        if (
+            compressor_running
+            and pump.state == "off"
+            and not self._flow_lockout
+            and self._pump_cmd_ready()
+        ):
             _LOGGER.warning("Compressor draait zonder flow — pomp aan")
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
@@ -649,7 +676,12 @@ class JacuzziController:
             self._notify_once("failsafe", False, "", "")
 
         # Pomp AAN bij warmtevraag (onmiddellijk, zoals template-trigger)
-        if self.warmtevraag and not pump_on and not self._flow_lockout:
+        if (
+            self.warmtevraag
+            and not pump_on
+            and not self._flow_lockout
+            and self._pump_cmd_ready()
+        ):
             _LOGGER.info("Warmtevraag (%.1f < %.1f) — pomp aan", tub_temp, setpoint)
             await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
@@ -668,7 +700,13 @@ class JacuzziController:
                 PUMP_RUNON_S,
             )
         )
-        if off_due and pump_on and self.pump_by_us and not compressor_on:
+        if (
+            off_due
+            and pump_on
+            and self.pump_by_us
+            and not compressor_on
+            and self._pump_cmd_ready()
+        ):
             _LOGGER.info("Setpoint bereikt / geen vraag — pomp uit")
             await self._async_call(
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
