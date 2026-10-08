@@ -44,6 +44,9 @@ from .const import (
     CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    COOLDOWN_MIN_DROP_K,
+    COOLDOWN_MIN_H,
+    DEFAULT_AMBIENT_SENSOR,
     DEFAULT_MIX_ENABLED,
     DEFAULT_MIX_INTERVAL_MIN,
     DEFAULT_MIX_PULSE_S,
@@ -52,6 +55,7 @@ from .const import (
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
     FLOW_FAULT_OFF_S,
+    HEAT_LOSS_SAMPLES,
     MAINT_PUMP_GRACE_S,
     MAINT_PUMP_RETRY_S,
     MIX_PUMPS,
@@ -63,6 +67,7 @@ from .const import (
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
     SOLAR_SURPLUS_S,
+    TUB_WATER_KG,
     UNREACHABLE_S,
 )
 
@@ -119,6 +124,8 @@ class JacuzziController:
         self._flow_saved_watercare: str | None = None  # watercare vóór Away
         self._pump_cmd_at = 0.0          # monotonic ts laatste pomp-commando
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
+        self._cool: dict | None = None   # lopend warmteverlies-meetvenster
+        self.heat_loss_samples: list[dict] = []  # laatste N metingen
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -159,6 +166,82 @@ class JacuzziController:
         except Exception as err:  # noqa: BLE001 - log en ga door
             _LOGGER.error("%s.%s faalde: %s", domain, service, err)
             return False
+
+    def _track_cooldown(
+        self, tub_temp: float, tub_valid: bool, pump_on: bool, compressor_on: bool
+    ) -> None:
+        """Meet passief warmteverlies tijdens stille periodes.
+
+        Pompen uit + compressor uit + geldige kuip-temp = meetvenster.
+        Bij einde venster (pomp/compressor aan): >=3 uur én >=0.5 K
+        daling -> W/K-meting (afkoeling genormaliseerd op kuip-buiten).
+        Dek open/dicht zie je als spreiding tussen metingen.
+        """
+        amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
+        ambient = (
+            _float(amb_st)
+            if amb_st is not None
+            and amb_st.state not in ("unavailable", "unknown")
+            else None
+        )
+        massage_on = any(
+            (st := self.hass.states.get(ent)) is not None and st.state == "on"
+            for ent in MIX_PUMPS
+        )
+        quiet = (
+            not (pump_on or compressor_on or massage_on)
+            and self._mix_until <= time.monotonic()
+        )
+        if quiet and tub_valid and ambient is not None:
+            if self._cool is None:
+                self._cool = {
+                    "start": dt_util.now(),
+                    "tub0": tub_temp,
+                    "tub": tub_temp,
+                    "amb_sum": 0.0,
+                    "amb_n": 0,
+                }
+            else:
+                self._cool["tub"] = tub_temp
+                self._cool["amb_sum"] += ambient
+                self._cool["amb_n"] += 1
+            return
+        if self._cool is None:
+            return
+        cool, self._cool = self._cool, None
+        hours = (dt_util.now() - cool["start"]).total_seconds() / 3600
+        drop = cool["tub0"] - cool["tub"]
+        if hours < COOLDOWN_MIN_H or drop < COOLDOWN_MIN_DROP_K:
+            return
+        amb_mean = cool["amb_sum"] / cool["amb_n"] if cool["amb_n"] else None
+        delta_t = (cool["tub0"] + cool["tub"]) / 2 - amb_mean if amb_mean else 0.0
+        if delta_t < 1.0:  # kuip ≈ buiten: verlies is ~0, W/K niet deelbaar
+            return
+        rate = drop / hours  # K/h
+        # W = kg * kJ/kgK * K/h / 3.6 ; W/K = / (kuip - buiten)
+        w_per_k = TUB_WATER_KG * 4.19 / 3.6 * rate / delta_t
+        sample = {
+            "at": dt_util.now().isoformat(timespec="minutes"),
+            "hours": round(hours, 1),
+            "drop_k": round(drop, 1),
+            "rate_k_h": round(rate, 2),
+            "tub_start_c": cool["tub0"],
+            "tub_end_c": cool["tub"],
+            "ambient_mean_c": round(amb_mean, 1),
+            "delta_t_k": round(delta_t, 1),
+            "w_per_k": round(w_per_k, 1),
+        }
+        self.heat_loss_samples.append(sample)
+        del self.heat_loss_samples[:-HEAT_LOSS_SAMPLES]
+        _LOGGER.info(
+            "Warmteverlies-meting: %.1f K in %.1f u (%.2f K/h) bij ΔT %.1f K "
+            "-> %.1f W/K",
+            drop,
+            hours,
+            rate,
+            delta_t,
+            w_per_k,
+        )
 
     def _pump_cmd_ready(self) -> bool:
         """True als er weer een pomp-commando mag. Markeert meteen —
@@ -595,6 +678,7 @@ class JacuzziController:
             and tub_valid
             and tub_temp < setpoint - self.conf["temp_margin"]
         )
+        self._track_cooldown(tub_temp, tub_valid, pump_on, compressor_on)
 
         # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
         # komt echt geen water door (lek tussen pomp en flowmeter, of

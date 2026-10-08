@@ -109,6 +109,9 @@
       },
       "cop_estimate": {
         "name": "COP (estimate)"
+      },
+      "heat_loss": {
+        "name": "Heat loss (W/K)"
       }
     },
     "switch": {

@@ -69,6 +69,7 @@ async def async_setup_entry(
         JacuzziTubTempSensor(entry),
         JacuzziPoolexInletTempSensor(entry),
         JacuzziPoolexDeltaTSensor(entry),
+        JacuzziHeatLossSensor(entry),
         power_est,
         heating,
         JacuzziCopEstimateSensor(entry),
@@ -502,6 +503,68 @@ class JacuzziHeatingPowerSensor(SensorEntity):
             return None
         slope = (n * sxy - sx * sy) / denom  # K/s
         return round(slope * TUB_HEAT_CAPACITY / 1000.0, 2)
+
+
+class JacuzziHeatLossSensor(SensorEntity):
+    """Passief warmteverlies van de kuip, W/K (genormaliseerd op ΔT).
+
+    De controller meet afkoeling tijdens stille periodes (alle pompen +
+    compressor uit, >=3 u, >=0.5 K daling). W/K = afkoelsnelheid *
+    watermassa / (kuip - buiten) — schaalt mee naar winterse nachten.
+    Dek open/dicht verschijnt als spreiding tussen de samples.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_translation_key = "heat_loss"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "W/K"
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:heat-wave"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_heat_loss"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """W/K van de laatste voltooide meting."""
+        if not self._entry.runtime_data.heat_loss_samples:
+            return None
+        return self._entry.runtime_data.heat_loss_samples[-1]["w_per_k"]
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """De laatste meting + het sample-spoor voor spreiding."""
+        samples = self._entry.runtime_data.heat_loss_samples
+        if not samples:
+            return {"metingen": 0}
+        last = samples[-1]
+        return {
+            "metingen": len(samples),
+            "gemeten_op": last["at"],
+            "afkoeling_k": last["drop_k"],
+            "afkoeling_k_per_u": last["rate_k_h"],
+            "delta_t_kuip_buiten": last["delta_t_k"],
+            "buiten_gemiddeld_c": last["ambient_mean_c"],
+            "duur_u": last["hours"],
+            "samples": samples,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe op controller-updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
+        )
+
+    @callback
+    def _async_update(self) -> None:
+        self.async_write_ha_state()
 
 
 class JacuzziCopEstimateSensor(SensorEntity):

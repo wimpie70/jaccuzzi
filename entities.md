@@ -128,3 +128,21 @@ schrijven werken.
 | Rol | Naam | Type |
 |---|---|---|
 | Pomp gestart door automation | `input_boolean.jacuzzi_pomp_door_ha` | input_boolean |
+
+## Aandachtspunten (meten = weten)
+
+- **Inlet (DP16) < outlet (DP25) zonder compressor**: met alle pompen
+  aan en echte flow zou `uitlaat ≈ inlaat` moeten zijn — er zit geen
+  warmtebron tussen (buiten/verdamper/heetgas waren allemaal laag).
+  Sensoren zijn identiek aan de Poolex-app, dus geen mapping-fout.
+  Verklaringen om te testen zodra er meer data is:
+  - constante sensor-offset (twee NTC's, ±0.5–1 °C elk) — dan:
+    meet bias bij compressor-uit + alle pompen aan, corrigeer in
+    `poolex_delta_t`
+  - DP16 zit mogelijk buiten de waterstroom (koude pijp-wand/pocket)
+  - check ook of het verschil afhangt van flow (low vs high)
+- **Kuip-temp ongewijzigd tijdens mengen**: verwacht dat de
+  Gecko-sensor (in de verwarmingsbuis) het water meet dat er langs
+  stroomt — als de inlaat al het warme bovenlaagje zag, verandert de
+  reading nauwelijks na mengen. Ook: 0.5 °C resolutie + cloud-delay.
+  Checken of de kuip-reading wél beweegt op lange meng-runs.

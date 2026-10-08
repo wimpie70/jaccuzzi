@@ -74,3 +74,12 @@ EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
 UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)
 POOLEX_OFF_GUARD_S = 60  # hvac 'off' moet zo lang aanhouden voor de guard
 RELOAD_COOLDOWN_S = 900  # max 1x per kwartier de Gecko-entry reloaden
+
+# Warmteverlies-meting: tijdens stille periodes (alle pompen + compressor
+# uit) daalt de kuip-temp. W/K-coëfficiënt = afkoeling genormaliseerd op
+# (kuip - buiten). Dek open/dicht geeft spreiding tussen metingen.
+DEFAULT_AMBIENT_SENSOR = "sensor.pool_heat_pump_temperature_2"  # Poolex DP21
+TUB_WATER_KG = 1500        # watermassa voor energie/verlies-rekeningen
+COOLDOWN_MIN_H = 3.0       # minimale meetduur voor een geldig venster
+COOLDOWN_MIN_DROP_K = 0.5  # minimale daling om als meting te tellen
+HEAT_LOSS_SAMPLES = 10     # bewaar de laatste N metingen
