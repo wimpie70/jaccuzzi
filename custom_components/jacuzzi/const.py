@@ -69,6 +69,8 @@ PROBLEM_DELAY_S = 120    # fault-bit aan voordat we melden — d1 mag
                          # eerst de kans krijgen bij hervatte flow te clearen
 FLOW_FAULT_OFF_S = 300   # pomp aan + fault zo lang -> pomp uit (drooglopen/lek)
 PUMP_CMD_DEBOUNCE_S = 30 # min. tijd tussen pomp-commando's (RF-flap -> geen storm)
+FAILSAFE_NOTIFY_MIN = 3      # pas melden bij de zoveelste pomp-dip
+FAILSAFE_NOTIFY_WINDOW_S = 3600  # ...binnen dit venster (Gecko toggelt vanzelf)
 NO_COMPRESSOR_S = 600    # warmtevraag zonder compressor -> verdacht
 EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
 UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)

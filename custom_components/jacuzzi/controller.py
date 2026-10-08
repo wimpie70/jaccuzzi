@@ -54,6 +54,8 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     FAILSAFE_DELAY_S,
+    FAILSAFE_NOTIFY_MIN,
+    FAILSAFE_NOTIFY_WINDOW_S,
     FLOW_FAULT_OFF_S,
     HEAT_LOSS_SAMPLES,
     MAINT_PUMP_GRACE_S,
@@ -126,6 +128,7 @@ class JacuzziController:
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
         self._cool: dict | None = None   # lopend warmteverlies-meetvenster
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
+        self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         self._unsubs = []
 
     # --- helpers -----------------------------------------------------
@@ -765,10 +768,30 @@ class JacuzziController:
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
             )
             self.pump_by_us = True
-            self._notify_once(
-                "failsafe", True, "Jacuzzi: pomp hersteld",
-                "De circulatiepomp stond uit terwijl de compressor draaide — weer aangezet.",
-            )
+            # De Gecko-pack dropt de pomp af en toe zelf (blijkt normaal
+            # gedrag: hij zet 'm aan zonder dat wij het zien, en uit).
+            # Een enkele dip = ruis; pas bij herhaling melden.
+            now = time.monotonic()
+            self._failsafe_hits = [
+                t for t in self._failsafe_hits
+                if now - t < FAILSAFE_NOTIFY_WINDOW_S
+            ]
+            self._failsafe_hits.append(now)
+            if len(self._failsafe_hits) >= FAILSAFE_NOTIFY_MIN:
+                self._notify_once(
+                    "failsafe", True, "Jacuzzi: pomp dipjes",
+                    f"De circulatiepomp ging {len(self._failsafe_hits)}x uit "
+                    f"terwijl de compressor draaide (laatste "
+                    f"{FAILSAFE_NOTIFY_WINDOW_S // 60} min) — hersteld. "
+                    "De pack lijkt de pomp te toggelen; houd de flow in de gaten.",
+                )
+            else:
+                _LOGGER.info(
+                    "Pomp-dip %d/%d binnen %d min — hersteld, geen melding",
+                    len(self._failsafe_hits),
+                    FAILSAFE_NOTIFY_MIN,
+                    FAILSAFE_NOTIFY_WINDOW_S // 60,
+                )
         else:
             self._notify_once("failsafe", False, "", "")
 
