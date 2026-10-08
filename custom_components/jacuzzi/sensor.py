@@ -16,6 +16,7 @@ from homeassistant.core import Event, EventStateChangedData, HomeAssistant, call
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoredExtraData
 from homeassistant.util import dt as dt_util
 
 from . import JacuzziConfigEntry
@@ -505,7 +506,7 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         return round(slope * TUB_HEAT_CAPACITY / 1000.0, 2)
 
 
-class JacuzziHeatLossSensor(SensorEntity):
+class JacuzziHeatLossSensor(RestoreSensor):
     """Passief warmteverlies van de kuip, W/K (genormaliseerd op ΔT).
 
     De controller meet afkoeling tijdens stille periodes (alle pompen +
@@ -556,11 +557,22 @@ class JacuzziHeatLossSensor(SensorEntity):
             "samples": samples,
         }
 
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData:
+        """De samples lijst zelf restoren (buiten de state om)."""
+        return RestoredExtraData(
+            {"samples": self._entry.runtime_data.heat_loss_samples}
+        )
+
     async def async_added_to_hass(self) -> None:
-        """Subscribe op controller-updates."""
+        """Subscribe op controller-updates + herstel de samples."""
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
         )
+        if (last := await self.async_get_last_extra_data()) is not None:
+            stored = last.as_dict().get("samples")
+            if stored and not self._entry.runtime_data.heat_loss_samples:
+                self._entry.runtime_data.heat_loss_samples = list(stored)
 
     @callback
     def _async_update(self) -> None:

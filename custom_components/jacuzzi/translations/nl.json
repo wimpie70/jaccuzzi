@@ -62,6 +62,11 @@
     }
   },
   "entity": {
+    "button": {
+      "heat_loss_reset": {
+        "name": "Warmteverlies resetten"
+      }
+    },
     "binary_sensor": {
       "pomp_door_ha": {
         "name": "Pomp door HA"

@@ -62,6 +62,11 @@
     }
   },
   "entity": {
+    "button": {
+      "heat_loss_reset": {
+        "name": "Reset heat loss"
+      }
+    },
     "binary_sensor": {
       "pomp_door_ha": {
         "name": "Pump started by HA"
