@@ -226,3 +226,15 @@ views:
         name: Poolex (kWh)
       - entity: sensor.jacuzzi_energy
         name: Jacuzzi (kWh)
+      - entity: sensor.jacuzzi_heat_loss
+        name: Warmteverlies (W/K)
+    - type: history-graph
+      title: Warmteverlies (W/K)
+      hours_to_show: 168
+      entities:
+      - entity: sensor.jacuzzi_heat_loss
+        name: W/K
+      - entity: sensor.pool_heat_pump_temperature_2
+        name: Buiten
+      - entity: sensor.jacuzzi_tub_temperature
+        name: Kuip
