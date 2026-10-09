@@ -69,7 +69,9 @@ from .const import (
     OVERHEAT_MARGIN_K,
     PEAK_MODE_OFF,
     POOLEX_OFF_GUARD_S,
+    POOLEX_OUTLET_SENSOR,
     POOLEX_SETPOINT_FLOOR,
+    POST_HEAT_OUTLET_C,
     PROBLEM_DELAY_S,
     PUMP_CMD_DEBOUNCE_S,
     PUMP_RUNON_S,
@@ -146,6 +148,7 @@ class JacuzziController:
         self._demand_suppressed = False  # wij hebben setpoint laag gezet
         self._suppress_at = 0.0          # monotonic ts laatste wissel
         self._sp_write_at = 0.0          # monotonic ts laatste sp-write
+        self._afterheat_hold = False     # pomp vastgehouden voor nakoeling
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         # Blootgesteld aan de eigen climate-entity (climate.py):
         # -COMP_IDLE_TRUST_S: bij (her)start geldt 'al lang uit' ->
@@ -161,6 +164,11 @@ class JacuzziController:
     def heat_setpoint(self) -> float:
         """Gewenste kuip-temperatuur (voor de climate-entity)."""
         return self._heat_setpoint
+
+    @property
+    def demand_suppressed(self) -> bool:
+        """Anti-pendel-rem actief: setpoint staat op de vloer."""
+        return self._demand_suppressed
 
     # --- helpers -----------------------------------------------------
 
@@ -1037,19 +1045,39 @@ class JacuzziController:
                 PUMP_RUNON_S,
             )
         )
+        # Nakoeling: compressor uit maar de wisselaar is nog heet ->
+        # pomp door laten draaien tot de uitlaat weer koel is. Zonder
+        # flow stagneert die restwarmte (waargenomen: uitlaat-spike
+        # naar 52 °C vlak na compressor-stop) en gaat de warmte
+        # verloren in de behuizing i.p.v. de kuip.
+        outlet_st = self.hass.states.get(POOLEX_OUTLET_SENSOR)
+        outlet_hot = (
+            outlet_st is not None
+            and outlet_st.state not in ("unavailable", "unknown")
+            and _float(outlet_st) > POST_HEAT_OUTLET_C
+        )
+        if outlet_hot and pump_on:
+            self._afterheat_hold = True
+        elif not pump_on:
+            self._afterheat_hold = False
         if (
             off_due
             and pump_on
             and self.pump_by_us
             and not compressor_on
+            and not outlet_hot
             and self._pump_cmd_ready()
         ):
-            _LOGGER.info("Setpoint bereikt / geen vraag — pomp uit")
+            _LOGGER.info(
+                "Setpoint bereikt / geen vraag — pomp uit%s",
+                " (na nakoeling uitlaat)" if self._afterheat_hold else "",
+            )
             await self._async_call(
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
             )
             self.pump_by_us = False
             self._compressor_recently_on = False
+            self._afterheat_hold = False
 
         # Meng-puls: tijdens het stoken afwisselend een massagepomp
         # kort aanzetten — roert de gestratificeerde lagen door elkaar

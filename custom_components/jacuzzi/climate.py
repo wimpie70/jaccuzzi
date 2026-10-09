@@ -31,6 +31,7 @@ from .controller import SIGNAL_UPDATE
 from .const import DOMAIN
 
 ATTR_SOURCE = "demand_bron"  # welke sensor leidend was (kuip/inlaat)
+ATTR_SUPPRESSED = "rem_actief"  # setpoint-onderdrukking (anti-pendel)
 
 
 async def async_setup_entry(
@@ -129,8 +130,13 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Welke bron de huidige temperatuur levert."""
-        return {ATTR_SOURCE: self._controller.demand_bron}
+        """Welke bron de huidige temperatuur levert + rem-status."""
+        return {
+            ATTR_SOURCE: self._controller.demand_bron,
+            ATTR_SUPPRESSED: (
+                "aan" if self._controller.demand_suppressed else "uit"
+            ),
+        }
 
     async def async_set_temperature(self, **kwargs) -> None:
         """Nieuw kuip-doel vanuit de kaart — gesnapt op de stap die

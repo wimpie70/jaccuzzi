@@ -30,6 +30,7 @@ from .const import (
     CONF_PUMP_FAN,
     DEFAULT_POOLEX_MAX_W,
     DOMAIN,
+    POOLEX_OUTLET_SENSOR,
 )
 
 ENERGY_SENSORS = (
@@ -39,7 +40,6 @@ ENERGY_SENSORS = (
 
 # tuya-local entities van de Poolex (vaste id's in deze setup)
 POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
-POOLEX_OUTLET_SENSOR = "sensor.pool_heat_pump_outflow_temperature"
 POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
 POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle

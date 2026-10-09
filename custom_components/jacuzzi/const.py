@@ -90,6 +90,12 @@ RETOUR_GUARD_K = 5.0           # extra oververhittings-marge tijdens
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
+# tuya-local entity van de Poolex-uitlaat (vaste id in deze setup)
+POOLEX_OUTLET_SENSOR = "sensor.pool_heat_pump_outflow_temperature"
+POST_HEAT_OUTLET_C = 45.0  # uitlaat heter dan dit na compressor-stop =
+                           # restwarmte in de wisselaar -> pomp door laten
+                           # draaien om af te koelen (waargenomen spike
+                           # naar 52 °C direct na compressor-stop 08/10)
 DEFAULT_MIX_ENABLED = True      # meng-puls tijdens het stoken
 DEFAULT_MIX_INTERVAL_MIN = 30   # minuten tussen pulsen
 DEFAULT_MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen

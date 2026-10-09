@@ -50,6 +50,9 @@ cards:
       - entity: climate.jacuzzi_tub_target
         attribute: demand_bron
         name: Meetbron vraag (kuip / inlaat+corr)
+      - entity: climate.jacuzzi_tub_target
+        attribute: rem_actief
+        name: Rem actief (anti-pendel)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
     - type: horizontal-stack

@@ -149,6 +149,10 @@ schrijven werken.
     bij compressor-uit + circulatie aangedreven voor >10 min.
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
+- **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
+  naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.
+  De controller houdt de circulatiepomp daarom aan zolang de uitlaat
+  >45 °C is (nakoeling, warmte gaat de kuip in i.p.v. de behuizing).
 - **Uitlaat (DP25) ook licht ambient-gekoppeld**: zakt bij stilstaand
   water ook, maar langzamer dan DP16 — kleinere k, minder kritiek
   omdat hij niet voor warmtevraag gebruikt wordt. De ΔT-sensor
