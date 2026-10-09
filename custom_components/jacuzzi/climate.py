@@ -54,7 +54,18 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_min_temp = 20.0
     _attr_max_temp = 42.0
-    _attr_target_temperature_step = 0.5
+
+    @property
+    def target_temperature_step(self) -> float:
+        """Volg de actuator: als de Poolex alleen hele graden kent
+        heeft een 0.5-stap geen zin — het device rondt dan af en de
+        adoptie trekt ons doel terug naar wat het device rapporteert."""
+        poolex = self.hass.states.get(self._controller.conf["poolex_climate"])
+        if poolex is not None:
+            step = poolex.attributes.get("target_temp_step")
+            if isinstance(step, (int, float)) and step > 0:
+                return float(step)
+        return 0.5
 
     def __init__(self, entry: JacuzziConfigEntry) -> None:
         """Bind aan de config entry en de controller."""
@@ -122,9 +133,13 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
         return {ATTR_SOURCE: self._controller.demand_bron}
 
     async def async_set_temperature(self, **kwargs) -> None:
-        """Nieuw kuip-doel vanuit de kaart."""
+        """Nieuw kuip-doel vanuit de kaart — gesnapt op de stap die
+        de Poolex echt kan opslaan."""
         if (temp := kwargs.get("temperature")) is not None:
-            self._controller.async_set_target(temp)
+            step = self.target_temperature_step
+            self._controller.async_set_target(
+                round(round(temp / step) * step, 1)
+            )
         self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:

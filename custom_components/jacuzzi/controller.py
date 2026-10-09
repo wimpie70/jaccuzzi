@@ -78,6 +78,7 @@ from .const import (
     SOLAR_SURPLUS_S,
     SP_SUPPRESS_REST_S,
     SP_SUPPRESS_RUN_S,
+    SP_WRITE_GRACE_S,
     TUB_WATER_KG,
     UNREACHABLE_S,
 )
@@ -144,6 +145,7 @@ class JacuzziController:
         )
         self._demand_suppressed = False  # wij hebben setpoint laag gezet
         self._suppress_at = 0.0          # monotonic ts laatste wissel
+        self._sp_write_at = 0.0          # monotonic ts laatste sp-write
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         # Blootgesteld aan de eigen climate-entity (climate.py):
         # -COMP_IDLE_TRUST_S: bij (her)start geldt 'al lang uit' ->
@@ -495,6 +497,8 @@ class JacuzziController:
                     "temperature": peak,
                 },
             )
+            if ok:
+                self._sp_write_at = time.monotonic()
         ok = await self._set_watercare("watercare_peak") and ok
         # False -> evaluate roept _on_peak_start de volgende tick opnieuw
         self._peak_active = ok
@@ -534,6 +538,7 @@ class JacuzziController:
                     },
                 )
                 if ok:
+                    self._sp_write_at = time.monotonic()
                     self._peak_saved_setpoint = None
         ok = await self._set_watercare("watercare_normal") and ok
         # False -> evaluate roept _on_peak_end de volgende tick opnieuw
@@ -728,7 +733,15 @@ class JacuzziController:
                     live_sp,
                 )
                 self._demand_suppressed = False
-            if not self._peak_active:
+            # Adoptie wel na de write-grace gate: vlak na onze eigen
+            # write kan de live attr nog de oude waarde teruglezen
+            # (trage tuya-sync) of een door het device afgeronde
+            # waarde (bv. hele graden) — die is dan de waarheid van
+            # het device, maar niet meteen na onze write.
+            if (
+                not self._peak_active
+                and time.monotonic() - self._sp_write_at > SP_WRITE_GRACE_S
+            ):
                 self._heat_setpoint = live_sp
         elif (
             not self._demand_suppressed
@@ -840,6 +853,7 @@ class JacuzziController:
                 )
                 self._demand_suppressed = False
                 self._suppress_at = time.monotonic()
+                self._sp_write_at = time.monotonic()
         elif (
             not self._peak_active
             and not poolex_off
@@ -874,6 +888,7 @@ class JacuzziController:
             )
             self._demand_suppressed = True
             self._suppress_at = time.monotonic()
+            self._sp_write_at = time.monotonic()
             if overheated:
                 self._notify_once(
                     "overheat",

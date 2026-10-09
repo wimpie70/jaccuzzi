@@ -71,6 +71,10 @@ POOLEX_SETPOINT_FLOOR = 15.0   # tuya minimum in heat-mode
 SP_SUPPRESS_REST_S = 1800      # setpoint laag >=30 min (compressor-rust)
 SP_SUPPRESS_RUN_S = 900        # setpoint hoog >=15 min (min. stookrun)
 OVERHEAT_MARGIN_K = 1.0        # kuip > doel + dit -> meteen remmen
+SP_WRITE_GRACE_S = 90          # na onze eigen setpoint-write: live attr
+                               # kan nog de oude waarde (tuya-echo) of
+                               # een afgeronde waarde tonen -> niet
+                               # adopteren als gebruikersdoel
 
 # Fase-afhankelijke vraag-bron. In rust (compressor al een poos uit)
 # is de Gecko-kuipmeting leidend: de inlaat (DP16) drijft dan naar
