@@ -142,6 +142,11 @@ schrijven werken.
     leest dan retour-water = bulk + per-pass ΔT (~5 K bij duty ~70)
   - compensatie tijdens stoken: `demand = inlaat + k×(inlaat −
     buiten)`, k ≈ 0.14, via `number.jacuzzi_inlet_sensor_compensation`
+  - **k is seizoensafhankelijk**: de ambient-drift van de pocket wordt
+    bepaald door het buiten-watertemp-verschil — in de zomer (buiten
+    ~25–30 °C) is die drift veel kleiner dan in de winter. Herkalibreren
+    na seizoenswisseling (zie GitHub issue): meetpunten uit recorder
+    bij compressor-uit + circulatie aangedreven voor >10 min.
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
 - **Uitlaat (DP25) ook licht ambient-gekoppeld**: zakt bij stilstaand
