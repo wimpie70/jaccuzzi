@@ -44,6 +44,14 @@ cards:
     - type: thermostat
       entity: climate.jacuzzi_tub_target
       name: Kuip-doel (onze thermostaat)
+    - type: entities
+      show_header_toggle: false
+      entities:
+      - entity: climate.jacuzzi_tub_target
+        attribute: demand_bron
+        name: Meetbron vraag (kuip / inlaat+corr)
+      - entity: binary_sensor.jacuzzi_heat_demand
+        name: Warmtevraag actief
     - type: horizontal-stack
       cards:
       - type: thermostat
