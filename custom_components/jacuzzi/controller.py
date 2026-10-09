@@ -83,6 +83,8 @@ from .const import (
     SP_WRITE_GRACE_S,
     TUB_WATER_KG,
     UNREACHABLE_S,
+    VERIFY_MAX_RESUMES,
+    VERIFY_MIX_S,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -149,6 +151,9 @@ class JacuzziController:
         self._suppress_at = 0.0          # monotonic ts laatste wissel
         self._sp_write_at = 0.0          # monotonic ts laatste sp-write
         self._afterheat_hold = False     # pomp vastgehouden voor nakoeling
+        self._verify_until = 0.0         # einde meng-check (monotonic)
+        self._verify_pending = False     # check klaar: hervat toegestaan
+        self._verify_resumes = 0         # hervattingen deze sessie
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         # Blootgesteld aan de eigen climate-entity (climate.py):
         # -COMP_IDLE_TRUST_S: bij (her)start geldt 'al lang uit' ->
@@ -813,7 +818,12 @@ class JacuzziController:
             # vraag eerder, de veilige kant op.
             demand_temp, demand_valid, bron = tub_temp, tub_valid, "kuip"
         self.demand_temp = demand_temp if demand_valid else None
-        self.demand_bron = bron
+        self.demand_bron = (
+            "meng-check"
+            if self._verify_until
+            and time.monotonic() < self._verify_until
+            else bron
+        )
         self.warmtevraag = (
             not poolex_off
             and self.heating_enabled
@@ -840,12 +850,52 @@ class JacuzziController:
             RETOUR_GUARD_K if comp_idle < COMP_IDLE_TRUST_S else 0.0
         )
         overheated = tub_valid and tub_temp > setpoint + guard_margin
+
+        # Meng-check: na een vraag-stop een paar min circuleren+jets,
+        # dan pas de echte (gemengde) bulk evalueren. Einde venster:
+        # vraag -> hervatten mag (zie restore-blok), geen vraag ->
+        # definitief klaar. Piek/onderhoud/hvac-off breekt af.
+        if self._verify_until and time.monotonic() >= self._verify_until:
+            self._verify_until = 0.0
+            if self.warmtevraag:
+                if self._verify_resumes < VERIFY_MAX_RESUMES:
+                    self._verify_pending = True
+                else:
+                    _LOGGER.info(
+                        "Meng-check: nog vraag (%.1f, bron=%s) maar "
+                        "hervat-limiet bereikt — rem blijft tot dwell",
+                        demand_temp or 0.0,
+                        bron,
+                    )
+            else:
+                _LOGGER.info(
+                    "Meng-check: bulk %.1f °C op temperatuur (bron=%s)"
+                    " — sessie klaar",
+                    demand_temp or 0.0,
+                    bron,
+                )
+                self._verify_pending = False
+                self._verify_resumes = 0
+        if (
+            self._peak_active
+            or not self.heating_enabled
+            or self.conf.get(CONF_MAINTENANCE)
+        ):
+            self._verify_until = 0.0
+            self._verify_pending = False
+
         if self._demand_suppressed:
             if (
                 self.warmtevraag
                 and not self._peak_active
-                and time.monotonic() - self._suppress_at
-                >= SP_SUPPRESS_REST_S
+                and (
+                    time.monotonic() - self._suppress_at
+                    >= SP_SUPPRESS_REST_S
+                    or (
+                        self._verify_pending
+                        and self._verify_resumes < VERIFY_MAX_RESUMES
+                    )
+                )
                 and await self._async_call(
                     "climate",
                     "set_temperature",
@@ -855,13 +905,27 @@ class JacuzziController:
                     },
                 )
             ):
-                _LOGGER.info(
-                    "Warmtevraag terug — Poolex-setpoint hersteld naar %.1f",
-                    setpoint,
-                )
                 self._demand_suppressed = False
                 self._suppress_at = time.monotonic()
                 self._sp_write_at = time.monotonic()
+                if self._verify_pending:
+                    self._verify_pending = False
+                    self._verify_resumes += 1
+                    _LOGGER.info(
+                        "Meng-check: nog vraag (%.1f, bron=%s) — "
+                        "run hervat (%d/%d)",
+                        demand_temp or 0.0,
+                        bron,
+                        self._verify_resumes,
+                        VERIFY_MAX_RESUMES,
+                    )
+                else:
+                    self._verify_resumes = 0
+                    _LOGGER.info(
+                        "Warmtevraag terug — Poolex-setpoint hersteld "
+                        "naar %.1f",
+                        setpoint,
+                    )
         elif (
             not self._peak_active
             and not poolex_off
@@ -872,8 +936,13 @@ class JacuzziController:
                 or (
                     demand_valid
                     and not self.warmtevraag
-                    and time.monotonic() - self._suppress_at
-                    >= SP_SUPPRESS_RUN_S
+                    and (
+                        time.monotonic() - self._suppress_at
+                        >= SP_SUPPRESS_RUN_S
+                        # in een meng-check-sessie geldt geen min. run-
+                        # tijd: de bulk is dan echt gemeten en op temp
+                        or self._verify_resumes > 0
+                    )
                 )
             )
             and await self._async_call(
@@ -897,6 +966,32 @@ class JacuzziController:
             self._demand_suppressed = True
             self._suppress_at = time.monotonic()
             self._sp_write_at = time.monotonic()
+            if (
+                not overheated
+                and self.heating_enabled
+                and self._compressor_recently_on
+            ):
+                # Echte run geëindigd op vraag -> de kuip is mogelijk
+                # gestratificeerd: eerst circuleren+jets, dan pas de
+                # gemengde bulk beoordelen (zie meng-check blok).
+                self._verify_until = time.monotonic() + VERIFY_MIX_S
+                _LOGGER.info(
+                    "Run gestopt — %d min circuleren+mengen, dan bulk "
+                    "her-evalueren",
+                    VERIFY_MIX_S // 60,
+                )
+                mix_pulse = float(
+                    self.conf.get(CONF_MIX_PULSE_S, DEFAULT_MIX_PULSE_S)
+                )
+                target = MIX_PUMPS[self._mix_next]
+                self._mix_next = (self._mix_next + 1) % len(MIX_PUMPS)
+                self._mix_entity = target
+                self._mix_until = time.monotonic() + mix_pulse
+                if not await self._async_call(
+                    "fan", "turn_on", {"entity_id": target}
+                ):
+                    _LOGGER.warning("Meng-jets voor check mislukt")
+                    self._mix_entity = None
             if overheated:
                 self._notify_once(
                     "overheat",
@@ -1060,12 +1155,16 @@ class JacuzziController:
             self._afterheat_hold = True
         elif not pump_on:
             self._afterheat_hold = False
+        verify_active = bool(self._verify_until) and (
+            time.monotonic() < self._verify_until
+        )
         if (
             off_due
             and pump_on
             and self.pump_by_us
             and not compressor_on
             and not outlet_hot
+            and not verify_active
             and self._pump_cmd_ready()
         ):
             _LOGGER.info(

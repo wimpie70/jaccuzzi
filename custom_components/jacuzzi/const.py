@@ -76,6 +76,15 @@ SP_WRITE_GRACE_S = 90          # na onze eigen setpoint-write: live attr
                                # een afgeronde waarde tonen -> niet
                                # adopteren als gebruikersdoel
 
+# Stop-meng-meet: bij einde warmtevraag tijdens een run schrijven we de
+# compressor-rem, maar de kuip is dan gestratificeerd (top ~5-9 K heter
+# dan de aanzuig-bodemlaag — gemeten 08/10). Eerst een paar minuten
+# circuleren + jets mengen, dan pas de ECHTE bulk evalueren: nog
+# vraag -> run hervatten (geen pendel: bulk klopt dan echt niet), geen
+# vraag -> definitief klaar.
+VERIFY_MIX_S = 300        # circulatie+meng-duur na een vraag-stop
+VERIFY_MAX_RESUMES = 2    # max hervattingen via meng-check per sessie
+
 # Fase-afhankelijke vraag-bron. In rust (compressor al een poos uit)
 # is de Gecko-kuipmeting leidend: de inlaat (DP16) drijft dan naar
 # ambient door zijn slecht-gekoppelde pocket (>10 min convergentie,
