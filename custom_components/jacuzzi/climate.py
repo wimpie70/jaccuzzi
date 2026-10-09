@@ -21,9 +21,10 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
@@ -41,7 +42,7 @@ async def async_setup_entry(
     async_add_entities([JacuzziTubClimate(entry)])
 
 
-class JacuzziTubClimate(ClimateEntity):
+class JacuzziTubClimate(ClimateEntity, RestoreEntity):
     """Thermostaat voor de kuip — stuurt controller._heat_setpoint."""
 
     _attr_has_entity_name = True
@@ -63,12 +64,23 @@ class JacuzziTubClimate(ClimateEntity):
         self._attr_device_info = {"identifiers": {(DOMAIN, entry.entry_id)}}
 
     async def async_added_to_hass(self) -> None:
-        """Luister naar controller-updates."""
+        """Luister naar controller-updates; herstel laatste doel."""
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass, SIGNAL_UPDATE, self._async_update
             )
         )
+        # Doel + hvac-mode overleven een restart: anders valt alles
+        # terug op de config-default (38 °C, vraag aan).
+        if (last := await self.async_get_last_state()) is not None:
+            if (
+                last.state not in ("unknown", "unavailable")
+                and (t := last.attributes.get("temperature")) is not None
+            ):
+                self._controller.async_set_target(float(t))
+            self._controller.async_set_heating_enabled(
+                last.state != "off"
+            )
 
     @callback
     def _async_update(self) -> None:
