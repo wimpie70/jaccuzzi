@@ -156,6 +156,18 @@ schrijven werken.
 - **DP111/112 = heating restart/stop hysterese** (beide 2.0 °C):
   bevestigd — de compressor stopte 08/10 om 17:42 exact bij
   inlaat ≥ setpoint − 2 K (35 bij doel 37).
+- **Bypass-klep — hoe hij werkt**: de bypass is een parallelle tak
+  NAAST de Poolex (tee → [bypass | warmtepomp] → samenvoeging).
+  - **bypass DICHT** = álle circulatie-flow gaat door de warmtepomp
+    = maximale wisselaar-flow, laagste ΔT — de goede stand voor deze
+    opstelling
+  - **bypass OPEN** = een deel van het water loopt om de unit heen →
+    wisselaar-flow zakt → ΔT stijgt → COP daalt; alleen nuttig als de
+    circulatiepomp meer levert dan de wisselaar aankan (hier niet)
+  - Knelpunt is de unit zelf: 1"-inlaat/uitlaat + interne wisselaar-
+    weerstand; de 50 mm-leidingen (incl. bochten) verwaarloosbaar.
+    Daarom is de per-pass ΔT structureel ~5–6 K bij duty ~70 —
+    verklaart tevens waarom RETOUR_GUARD_K = 5.
 - **Kuip-doel: `climate.jacuzzi_tub_target`** (v0.7.1) — eigen
   thermostaat-entity. Doel + vraag-aan/uit; toont de leidende
   bron-temperatuur en `demand_bron` als attribuut. De Poolex-climate
