@@ -21,7 +21,7 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.const import UnitOfTemperature
-from homeassistant.core import HomeAssistant, State, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
