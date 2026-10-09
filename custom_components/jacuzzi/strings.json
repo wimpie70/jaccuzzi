@@ -157,6 +157,11 @@
       "peak_end": {
         "name": "Piekblokkade einde"
       }
+    },
+    "climate": {
+      "tub_target": {
+        "name": "Tub target"
+      }
     }
   }
 }

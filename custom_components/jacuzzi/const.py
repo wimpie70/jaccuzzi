@@ -72,6 +72,18 @@ SP_SUPPRESS_REST_S = 1800      # setpoint laag >=30 min (compressor-rust)
 SP_SUPPRESS_RUN_S = 900        # setpoint hoog >=15 min (min. stookrun)
 OVERHEAT_MARGIN_K = 1.0        # kuip > doel + dit -> meteen remmen
 
+# Fase-afhankelijke vraag-bron. In rust (compressor al een poos uit)
+# is de Gecko-kuipmeting leidend: de inlaat (DP16) drijft dan naar
+# ambient door zijn slecht-gekoppelde pocket (>10 min convergentie,
+# 's nachts volledig richting buitentemp). Tijdens/kort na stoken is
+# de kuipmeting juist NIET bruikbaar als vraag-bron: de Gecko-buis
+# leest retour-water = bulk + per-pass ΔT (~5 K bij duty ~70).
+COMP_IDLE_TRUST_S = 180        # compressor uit zo lang -> kuip leidend
+RETOUR_GUARD_K = 5.0           # extra oververhittings-marge tijdens
+                               # stoken: retour ≈ bulk + per-pass ΔT;
+                               # zonder deze ruimte tripte de bewaker
+                               # constant op gezond retour-water
+
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
 DEFAULT_MIX_ENABLED = True      # meng-puls tijdens het stoken

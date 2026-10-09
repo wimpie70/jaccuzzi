@@ -131,23 +131,35 @@ schrijven werken.
 
 ## Aandachtspunten (meten = weten)
 
-- **Inlet (DP16) meet te laag — bevestigd, is ambient-koppeling**: uit
-  recorder-data (okt 2026): bij rust + flow is `kuip − inlaat` ~+1.7 K
-  bij 25 °C water maar ~+4.5 K bij 43 °C — dus GEEN vaste offset maar
-  evenredig met (water − buiten), k ≈ 0.14. Bij stilstaand water
-  (pomp uit) zakt de inlaat volledig naar buitentemperatuur (~18 °C
-  bij 30 °C water) — de sensor zit op een ongeïsoleerd leidingdeel of
-  pocket met slecht thermisch contact. Dit is bij Poolex gedocumenteerd
-  gedrag: hun "Mode 1" pompt 2 min/15 min juist om de watertemp te
-  refreshen. Compensatie in de controller:
-  `demand_temp = inlaat + k×(inlaat − buiten)`, k instelbaar via
-  `number.jacuzzi_inlet_sensor_compensation` (default 0.14).
-  NB: er bestaan fabrieks-compensatieparams (O'SPA: C15/C16 ±9 °C,
-  Megaline: P09) — op de IceSpa mogelijk achter service-code.
+- **Inlet (DP16) = trage pocket + ambient-drift — fase-afhankelijk
+  bruikbaar**: uit recorder-data (okt 2026): de inlaat-pocket convergeert
+  in >10 min (uitlaat-pocket ~5 min). Bij stilstaand water zakt DP16
+  helemaal naar buitentemp (18 °C bij 30 °C water). Korte meng-pulsen
+  (2–3 min) zijn te kort om te convergeren. Daarom:
+  - **rust (compressor ≥3 min uit): de KUIP (Gecko) is leidend** —
+    inlaat is dan ambient-gedreven of aan het convergeren
+  - **stoken: de (gecorrigeerde) inlaat is leidend** — de Gecko-buis
+    leest dan retour-water = bulk + per-pass ΔT (~5 K bij duty ~70)
+  - compensatie tijdens stoken: `demand = inlaat + k×(inlaat −
+    buiten)`, k ≈ 0.14, via `number.jacuzzi_inlet_sensor_compensation`
+  - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
+    (DP110 = sampling interval, range 30–90 min)
 - **Uitlaat (DP25) ook licht ambient-gekoppeld**: zakt bij stilstaand
-  water ook, maar langzamer dan DP16 (blijft richting kuip hangen) —
-  kleinere k, minder kritiek omdat hij niet voor warmtevraag gebruikt
-  wordt. De ΔT-sensor (uit−in) is tijdens stoken wel betrouwbaar.
+  water ook, maar langzamer dan DP16 — kleinere k, minder kritiek
+  omdat hij niet voor warmtevraag gebruikt wordt. De ΔT-sensor
+  (uit−in) is tijdens stoken wel betrouwbaar.
+- **DP102 = "Inlet temperature compensation"** (number, −4..0 °C):
+  fabrieks-kalibratie op de interne regelkring — verandert de
+  GERAPPORTEERDE DP16 niet (getest: −4 gaf geen zichtbaar verschil).
+  Eventueel wel bruikbaar om de interne thermostaat eerder te laten
+  stoppen — niet verder uitgezocht.
+- **DP111/112 = heating restart/stop hysterese** (beide 2.0 °C):
+  bevestigd — de compressor stopte 08/10 om 17:42 exact bij
+  inlaat ≥ setpoint − 2 K (35 bij doel 37).
+- **Kuip-doel: `climate.jacuzzi_tub_target`** (v0.7.1) — eigen
+  thermostaat-entity. Doel + vraag-aan/uit; toont de leidende
+  bron-temperatuur en `demand_bron` als attribuut. De Poolex-climate
+  is alleen actuator: wij schrijven er nooit hvac 'off' naartoe.
 - **Compressor duty = 0–100%, niet 0–1500**: waargenomen 16–76 tijdens
   stoken, exact 0 idle. De oude /1500-schaal gaf ~75 W bij duty 70
   terwijl de compressor echt ~1 kW trok — gecorrigeerd in

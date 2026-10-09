@@ -157,6 +157,11 @@
       "peak_end": {
         "name": "Peak end"
       }
+    },
+    "climate": {
+      "tub_target": {
+        "name": "Tub target"
+      }
     }
   }
 }

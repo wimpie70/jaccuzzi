@@ -8,7 +8,15 @@ from homeassistant.core import HomeAssistant
 from .controller import JacuzziController
 from .dashboard import async_setup_dashboard, teardown_dashboard
 
-PLATFORMS = ["binary_sensor", "button", "number", "sensor", "switch", "time"]
+PLATFORMS = [
+    "binary_sensor",
+    "button",
+    "climate",
+    "number",
+    "sensor",
+    "switch",
+    "time",
+]
 
 type JacuzziConfigEntry = ConfigEntry[JacuzziController]
 

@@ -57,14 +57,19 @@ views:
         name: Onderhoudsmodus
     - type: thermostat
       layout_options:
+        grid_columns: 12
+      entity: climate.jacuzzi_tub_target
+      name: Kuip-doel (onze thermostaat)
+    - type: thermostat
+      layout_options:
         grid_columns: 6
       entity: climate.jaccuzzi_thermostat_1
-      name: Kuip
+      name: Kuip (Gecko)
     - type: thermostat
       layout_options:
         grid_columns: 6
       entity: climate.pool_heat_pump
-      name: Poolex
+      name: Poolex (actuator)
     - type: entities
       layout_options:
         grid_columns: 12

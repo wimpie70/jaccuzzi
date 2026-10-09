@@ -41,14 +41,17 @@ cards:
       entities:
       - entity: switch.jacuzzi_maintenance
         name: Onderhoudsmodus
+    - type: thermostat
+      entity: climate.jacuzzi_tub_target
+      name: Kuip-doel (onze thermostaat)
     - type: horizontal-stack
       cards:
       - type: thermostat
         entity: climate.jaccuzzi_thermostat_1
-        name: Kuip
+        name: Kuip (Gecko)
       - type: thermostat
         entity: climate.pool_heat_pump
-        name: Poolex
+        name: Poolex (actuator)
     - type: entities
       title: Gecko — kuip
       show_header_toggle: false

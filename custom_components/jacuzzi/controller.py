@@ -45,6 +45,7 @@ from .const import (
     CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    COMP_IDLE_TRUST_S,
     COOLDOWN_MIN_DROP_K,
     COOLDOWN_MIN_H,
     DEFAULT_AMBIENT_SENSOR,
@@ -73,6 +74,7 @@ from .const import (
     PUMP_CMD_DEBOUNCE_S,
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
+    RETOUR_GUARD_K,
     SOLAR_SURPLUS_S,
     SP_SUPPRESS_REST_S,
     SP_SUPPRESS_RUN_S,
@@ -143,7 +145,20 @@ class JacuzziController:
         self._demand_suppressed = False  # wij hebben setpoint laag gezet
         self._suppress_at = 0.0          # monotonic ts laatste wissel
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
+        # Blootgesteld aan de eigen climate-entity (climate.py):
+        # -COMP_IDLE_TRUST_S: bij (her)start geldt 'al lang uit' ->
+        # kuip is dan meteen de leidende bron.
+        self._comp_last_on = -COMP_IDLE_TRUST_S
+        self.compressor_on = False       # duty > 0 nu (hvac_action)
+        self.heating_enabled = True      # climate hvac off -> geen vraag
+        self.demand_temp: float | None = None  # bron-temp voor het display
+        self.demand_bron = ""            # welke sensor leidend was
         self._unsubs = []
+
+    @property
+    def heat_setpoint(self) -> float:
+        """Gewenste kuip-temperatuur (voor de climate-entity)."""
+        return self._heat_setpoint
 
     # --- helpers -----------------------------------------------------
 
@@ -356,6 +371,29 @@ class JacuzziController:
 
     @callback
     def _on_tick(self, _now) -> None:
+        self.hass.async_create_task(self._async_evaluate())
+
+    @callback
+    def async_set_target(self, value: float) -> None:
+        """Doel-temperatuur vanuit de eigen climate-entity.
+
+        Dit IS het gebruikersdoel — het live Poolex-setpoint is alleen
+        een actuator-signaal (vloer bij geen vraag). Een piek-opslag
+        vervalt: het nieuwe doel geldt meteen bij piek-einde.
+        """
+        self._heat_setpoint = float(value)
+        self._peak_saved_setpoint = None
+        self.hass.async_create_task(self._async_evaluate())
+
+    @callback
+    def async_set_heating_enabled(self, enabled: bool) -> None:
+        """Climate-hvac: off -> geen warmtevraag meer.
+
+        Alleen de VRAAG gaat uit: de Poolex zelf blijft op 'heat'
+        (telemetrie + vorstbeveiliging) — de unit wordt nooit
+        uitgeschreven.
+        """
+        self.heating_enabled = enabled
         self.hass.async_create_task(self._async_evaluate())
 
     # --- peak block ----------------------------------------------------
@@ -705,6 +743,9 @@ class JacuzziController:
         setpoint = self._heat_setpoint
         tub_temp = _attr_float(jacuzzi, "current_temperature")
         compressor_on = _float(compressor) > 0
+        if compressor_on:
+            self._comp_last_on = time.monotonic()
+        self.compressor_on = compressor_on
         pump_on = pump.state == "on"
         problem_active = problem is not None and problem.state == "on"
         # tub_temp kan 0.0 rapporteren tijdens RF-uitval (vessel
@@ -713,24 +754,26 @@ class JacuzziController:
         tub_valid = jacuzzi.state not in ("unavailable", "unknown") and (
             1.0 <= tub_temp <= 45.0
         )
-        # De Poolex-inlaat (climate.current_temperature = DP16) meet
-        # water dat uit de kuip komt — de beste bulk-temp zodra er ~30 s
-        # circulatie is geweest. Zonder flow is de Gecko-buismeeting de
-        # fallback (ook gestratificeerd, maar beter dan niets).
-        # Let op: DP16 zit thermisch gekoppeld aan de buitenlucht —
-        # bij stilstaand water zakt hij volledig naar ambient (gemeten:
-        # 18 °C bij 30 °C water). De meetfout is dus geen vaste offset
-        # maar evenredig met (inlaat - buiten): recorder-data geeft
-        # k ~ 0.14 (inlaat ~1.7 K laag bij 25 °C, ~4.5 K bij 43 °C).
-        # Ons doel geldt voor het echte water, dus corrigeren we:
-        #   demand = inlaat + k * (inlaat - buiten)
-        # Kalibreerbaar via number 'Inlaat sensorcompensatie'.
+        # Fase-afhankelijke vraag-bron (zie const.py):
+        # - RUST (compressor >=3 min uit) of geen flow: de kuip is
+        #   leidend. De inlaat-pocket is dan ambient-gedreven of nog
+        #   aan het convergeren (gemeten: >10 min, 's nachts zakt hij
+        #   helemaal naar buitentemp) — de kuip is dan de betrouwbare
+        #   bulk-meting (thermometer bevestigt dit).
+        # - STOKEN (compressor aan / net uit): de Gecko-buis leest
+        #   retour-water = bulk + per-pass ΔT (~5 K). Dan is de
+        #   inlaat leidend — die meet het aangezogen kuipwater —
+        #   met ambient-compensatie: DP16 zit thermisch gekoppeld
+        #   aan de buitenlucht; meetfout is geen vaste offset maar
+        #   ~k × (inlaat - buiten), k ≈ 0.14 uit recorder-data.
+        #   Kalibreerbaar via number 'Inlaat sensorcompensatie'.
         inlet_temp = _attr_float(poolex, "current_temperature")
         inlet_valid = poolex.state not in ("unavailable", "unknown") and (
             1.0 <= inlet_temp <= 45.0
         )
         flow_ok = self._since_true("flow_established", pump_on, 30)
-        if inlet_valid and flow_ok:
+        comp_idle = time.monotonic() - self._comp_last_on
+        if inlet_valid and flow_ok and comp_idle < COMP_IDLE_TRUST_S:
             amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
             amb_ok = amb_st is not None and amb_st.state not in (
                 "unavailable", "unknown",
@@ -744,9 +787,15 @@ class JacuzziController:
             demand_temp = inlet_temp + comp
             demand_valid, bron = True, f"inlaat+{comp:.1f}"
         else:
+            # kuip — leidend in rust; tijdens stoken zonder geldige
+            # inlaat is dit een te hoge meting (retour) -> stopt de
+            # vraag eerder, de veilige kant op.
             demand_temp, demand_valid, bron = tub_temp, tub_valid, "kuip"
+        self.demand_temp = demand_temp if demand_valid else None
+        self.demand_bron = bron
         self.warmtevraag = (
             not poolex_off
+            and self.heating_enabled
             and demand_valid
             and demand_temp < setpoint - self.conf["temp_margin"]
         )
@@ -762,7 +811,14 @@ class JacuzziController:
         # min. 30 min laag (compressor-rust) en min. 15 min hoog.
         # De kuip-oververhitting gaat vóór op de dwell — dat is het
         # vangnet als de compensatie of inlaat-meting fout zit.
-        overheated = tub_valid and tub_temp > setpoint + OVERHEAT_MARGIN_K
+        # Tijdens/kort na stoken leest de Gecko-buis retour-water
+        # (bulk + per-pass ΔT ~5 K): dan is de marge ruimer, anders
+        # tript de bewaker op gezond retour-water. In rust blijft
+        # +OVERHEAT_MARGIN_K de harde grens.
+        guard_margin = OVERHEAT_MARGIN_K + (
+            RETOUR_GUARD_K if comp_idle < COMP_IDLE_TRUST_S else 0.0
+        )
+        overheated = tub_valid and tub_temp > setpoint + guard_margin
         if self._demand_suppressed:
             if (
                 self.warmtevraag
@@ -790,6 +846,7 @@ class JacuzziController:
             and not self._flow_lockout
             and (
                 overheated
+                or not self.heating_enabled
                 or (
                     demand_valid
                     and not self.warmtevraag
@@ -809,8 +866,10 @@ class JacuzziController:
             _LOGGER.info(
                 "%s — Poolex-setpoint naar %.1f (compressor-rem)",
                 "Oververhitting" if overheated
+                else "Vraag uit (hvac off)" if not self.heating_enabled
                 else "Doel bereikt (%.1f, bron=%s)",
-                *(() if overheated else (demand_temp, bron)),
+                *(() if overheated or not self.heating_enabled
+                  else (demand_temp, bron)),
                 POOLEX_SETPOINT_FLOOR,
             )
             self._demand_suppressed = True
@@ -821,7 +880,7 @@ class JacuzziController:
                     True,
                     "Jacuzzi: oververhitting",
                     f"Kuip-temperatuur {tub_temp:.1f} °C is meer dan "
-                    f"{OVERHEAT_MARGIN_K:.1f} K boven het doel "
+                    f"{guard_margin:.1f} K boven het doel "
                     f"({setpoint:.1f} °C) — Poolex-setpoint naar "
                     f"{POOLEX_SETPOINT_FLOOR:.0f} °C gezet. De inlaat-"
                     "sensor van de unit leest te laag; check de "
