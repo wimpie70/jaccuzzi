@@ -82,8 +82,15 @@ SP_WRITE_GRACE_S = 90          # na onze eigen setpoint-write: live attr
 # circuleren + jets mengen, dan pas de ECHTE bulk evalueren: nog
 # vraag -> run hervatten (geen pendel: bulk klopt dan echt niet), geen
 # vraag -> definitief klaar.
-VERIFY_MIX_S = 300        # circulatie+meng-duur na een vraag-stop
+VERIFY_MIX_S = 360        # circulatie+meng-duur na een vraag-stop —
+                          # ook >= de ~3-5 min compressor-egaliseertijd
 VERIFY_MAX_RESUMES = 2    # max hervattingen via meng-check per sessie
+# Lerende retour-offset: hoeveel heter de kuip-sensor las dan de
+# gemengde bulk bleek te zijn -> vervangt de vaste RETOUR_GUARD_K
+# als oververhittings-marge tijdens stoken. EMA-geleerd, geclamped:
+# te laag = vals alarm, te hoog = iets anders kapot.
+RETOUR_GUARD_MIN_K = 2.0
+RETOUR_GUARD_MAX_K = 9.0
 
 # Fase-afhankelijke vraag-bron. In rust (compressor al een poos uit)
 # is de Gecko-kuipmeting leidend: de inlaat (DP16) drijft dan naar

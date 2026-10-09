@@ -77,6 +77,8 @@ from .const import (
     PUMP_RUNON_S,
     RELOAD_COOLDOWN_S,
     RETOUR_GUARD_K,
+    RETOUR_GUARD_MAX_K,
+    RETOUR_GUARD_MIN_K,
     SOLAR_SURPLUS_S,
     SP_SUPPRESS_REST_S,
     SP_SUPPRESS_RUN_S,
@@ -154,6 +156,10 @@ class JacuzziController:
         self._verify_until = 0.0         # einde meng-check (monotonic)
         self._verify_pending = False     # check klaar: hervat toegestaan
         self._verify_resumes = 0         # hervattingen deze sessie
+        self._verify_tub_at_stop: float | None = None  # kuip bij stop
+        # Lerende retour-offset: kuip-las bij stop minus gemengde bulk.
+        # EMA-geleerd per run; start op de gemeten ~5 K (08/10).
+        self._retour_offset = RETOUR_GUARD_K
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         # Blootgesteld aan de eigen climate-entity (climate.py):
         # -COMP_IDLE_TRUST_S: bij (her)start geldt 'al lang uit' ->
@@ -174,6 +180,11 @@ class JacuzziController:
     def demand_suppressed(self) -> bool:
         """Anti-pendel-rem actief: setpoint staat op de vloer."""
         return self._demand_suppressed
+
+    @property
+    def retour_offset(self) -> float:
+        """Geleerde kuip-retour offset (EMA per meng-check)."""
+        return self._retour_offset
 
     # --- helpers -----------------------------------------------------
 
@@ -847,7 +858,7 @@ class JacuzziController:
         # tript de bewaker op gezond retour-water. In rust blijft
         # +OVERHEAT_MARGIN_K de harde grens.
         guard_margin = OVERHEAT_MARGIN_K + (
-            RETOUR_GUARD_K if comp_idle < COMP_IDLE_TRUST_S else 0.0
+            self._retour_offset if comp_idle < COMP_IDLE_TRUST_S else 0.0
         )
         overheated = tub_valid and tub_temp > setpoint + guard_margin
 
@@ -857,6 +868,25 @@ class JacuzziController:
         # definitief klaar. Piek/onderhoud/hvac-off breekt af.
         if self._verify_until and time.monotonic() >= self._verify_until:
             self._verify_until = 0.0
+            # Lerende retour-offset: kuip-las bij de stop minus de nu
+            # gemengde bulk = de werkelijke stratificatie/retour-marge
+            # van deze run. EMA (0.3) dempt uitschieters; geclamped.
+            if self._verify_tub_at_stop is not None and tub_valid:
+                measured = self._verify_tub_at_stop - tub_temp
+                if 0.0 < measured < 15.0:
+                    self._retour_offset = min(
+                        max(
+                            0.7 * self._retour_offset + 0.3 * measured,
+                            RETOUR_GUARD_MIN_K,
+                        ),
+                        RETOUR_GUARD_MAX_K,
+                    )
+                    _LOGGER.info(
+                        "Retour-offset geleerd: %.1f K (gemeten %.1f K)",
+                        self._retour_offset,
+                        measured,
+                    )
+            self._verify_tub_at_stop = None
             if self.warmtevraag:
                 if self._verify_resumes < VERIFY_MAX_RESUMES:
                     self._verify_pending = True
@@ -883,6 +913,7 @@ class JacuzziController:
         ):
             self._verify_until = 0.0
             self._verify_pending = False
+            self._verify_tub_at_stop = None
 
         if self._demand_suppressed:
             if (
@@ -975,6 +1006,7 @@ class JacuzziController:
                 # gestratificeerd: eerst circuleren+jets, dan pas de
                 # gemengde bulk beoordelen (zie meng-check blok).
                 self._verify_until = time.monotonic() + VERIFY_MIX_S
+                self._verify_tub_at_stop = tub_temp if tub_valid else None
                 _LOGGER.info(
                     "Run gestopt — %d min circuleren+mengen, dan bulk "
                     "her-evalueren",

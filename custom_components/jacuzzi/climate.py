@@ -32,6 +32,7 @@ from .const import DOMAIN
 
 ATTR_SOURCE = "demand_bron"  # welke sensor leidend was (kuip/inlaat)
 ATTR_SUPPRESSED = "rem_actief"  # setpoint-onderdrukking (anti-pendel)
+ATTR_RETOUR = "retour_marge"  # geleerde kuip-retour offset (K)
 
 
 async def async_setup_entry(
@@ -136,6 +137,7 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
             ATTR_SUPPRESSED: (
                 "aan" if self._controller.demand_suppressed else "uit"
             ),
+            ATTR_RETOUR: round(self._controller.retour_offset, 1),
         }
 
     async def async_set_temperature(self, **kwargs) -> None:
