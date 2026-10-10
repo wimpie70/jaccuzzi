@@ -48,11 +48,11 @@ cards:
     - type: entities
       show_header_toggle: false
       entities:
-      - entity: sensor.jacuzzi_regelstatus
+      - entity: sensor.jacuzzi_control_status
         name: Regelstatus
-      - entity: sensor.jacuzzi_meetbron
+      - entity: sensor.jacuzzi_demand_source
         name: Meetbron vraag
-      - entity: sensor.jacuzzi_retour_marge
+      - entity: sensor.jacuzzi_return_margin
         name: Retour-marge (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
@@ -100,7 +100,7 @@ cards:
         name: Aan/uit
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag
-      - entity: binary_sensor.jacuzzi_compressor_actief
+      - entity: binary_sensor.jacuzzi_compressor_active
         name: Compressor
       - entity: sensor.jacuzzi_poolex_compressor
         name: Duty %

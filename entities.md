@@ -161,7 +161,10 @@ schrijven werken.
   `t = kuip_bij_stop − kuip_na_mengen` = de echte top-vs-bulk offset
   van die run (klein: ~0.5 K). Die vervangt de vaste bewakings-marge
   (EMA, 0.3-gewicht, geclamped 2–9 K = `RETOUR_GUARD_MIN/MAX_K`).
-  Zichtbaar als attribuut `retour_marge` op `climate.jacuzzi_tub_target`.
+  Zichtbaar als `sensor.jacuzzi_return_margin` (+ attribuut
+  `retour_marge` op `climate.jacuzzi_tub_target`). Let op: HA
+  slugifies entity_ids uit de EN-vertaalnaam — Nederlandse
+  translation_keys geven Engelse entity_ids.
 - **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
   naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.
   De controller houdt de circulatiepomp daarom aan zolang de uitlaat
