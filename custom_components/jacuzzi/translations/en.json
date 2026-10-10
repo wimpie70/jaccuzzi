@@ -160,6 +160,12 @@
       },
       "inlet_compensation_k": {
         "name": "Inlet sensor compensation"
+      },
+      "temp_margin": {
+        "name": "Heat demand margin"
+      },
+      "overshoot": {
+        "name": "Heat overshoot above target"
       }
     },
     "time": {

@@ -38,6 +38,7 @@ from .const import (
     CONF_MIX_PULSE_S,
     CONF_NORMAL_SETPOINT,
     CONF_NOTIFY_SERVICE,
+    CONF_OVERSHOOT,
     CONF_PEAK_END,
     CONF_PEAK_MODE,
     CONF_PEAK_SETPOINT,
@@ -54,6 +55,7 @@ from .const import (
     DEFAULT_MIX_INTERVAL_MIN,
     DEFAULT_MIX_PULSE_S,
     DEFAULT_NORMAL_SETPOINT,
+    DEFAULT_OVERSHOOT_K,
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
     EVAL_INTERVAL_S,
@@ -861,11 +863,15 @@ class JacuzziController:
             else bron
         )
         # Echte hysterese: de vraag ontstaat onder doel-marge, maar een
-        # lopende (niet-geremde) run stookt door tot het DOEL zelf —
-        # anders convergeert de kuip op doel-marge i.p.v. doel.
-        # Gevolg: `not warmtevraag` betekent "doel bereikt" zolang wij
+        # lopende (niet-geremde) run stookt door tot doel + overshoot —
+        # anders convergeert de kuip op doel-marge i.p.v. doel, en na
+        # gebruik/wachttijd is doel zelf al te krap. Gevolg:
+        # `not warmtevraag` betekent "doel+overshoot bereikt" zolang wij
         # niet remmen, en "bulk nog te warm om te hervatten" als we dat
         # wel doen — beide zijn precies wat de takken hieronder vragen.
+        overshoot = float(
+            self.conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K)
+        )
         self.warmtevraag = (
             not poolex_off
             and self.heating_enabled
@@ -873,7 +879,8 @@ class JacuzziController:
             and (
                 demand_temp < setpoint - self.conf["temp_margin"]
                 or (
-                    not self._demand_suppressed and demand_temp < setpoint
+                    not self._demand_suppressed
+                    and demand_temp < setpoint + overshoot
                 )
             )
         )
@@ -1207,7 +1214,7 @@ class JacuzziController:
         off_due = (
             self._since_true(
                 "temp_reached",
-                demand_valid and demand_temp >= setpoint,
+                demand_valid and demand_temp >= setpoint + overshoot,
                 PUMP_RUNON_S,
             )
             or self._since_true("poolex_off", poolex_off, PUMP_RUNON_S)

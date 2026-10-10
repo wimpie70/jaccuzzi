@@ -149,6 +149,13 @@ schrijven werken.
     bij compressor-uit + circulatie aangedreven voor >10 min.
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
+- **Regel-band: start onder doel, stop boven doel**: warmtevraag
+  ontstaat zodra de demand-meting < doel −
+  `number.jacuzzi_heat_demand_margin` (default 0.5 K). Een lopende run
+  stookt dan door tot doel +
+  `number.jacuzzi_heat_overshoot_above_target` (default 1 K): de kuip
+  koelt na de run zelf weer af (gebruik/wachttijd), dus stoppen op
+  doel is structureel te krap. Bij doel 37 is de band dus ~36.5 → 38.
 - **Meng-check na elke vraag-stop**: de inlaat leest structureel
   te laag (pocket + ambient, 08/10: inlaat 35 vs kuip 44.5 = ~9.5 K —
   dat was vooral sensor-fout, géén echte stratificatie; eerste echte

@@ -160,6 +160,12 @@
       },
       "inlet_compensation_k": {
         "name": "Inlaat sensorcompensatie"
+      },
+      "temp_margin": {
+        "name": "Vraag-marge"
+      },
+      "overshoot": {
+        "name": "Doorstook boven doel"
       }
     },
     "time": {

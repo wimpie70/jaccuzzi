@@ -14,6 +14,7 @@ CONF_PEAK_END = "peak_end"
 CONF_WATERCARE_PEAK = "watercare_peak"
 CONF_WATERCARE_NORMAL = "watercare_normal"
 CONF_TEMP_MARGIN = "temp_margin"
+CONF_OVERSHOOT = "overshoot"
 CONF_PEAK_MODE = "peak_mode"
 CONF_PEAK_SETPOINT = "peak_setpoint"
 CONF_NORMAL_SETPOINT = "normal_setpoint"
@@ -44,7 +45,12 @@ DEFAULT_PEAK_END = "20:00"
 # (Away/Savings/Weekender) werken wel.
 DEFAULT_WATERCARE_PEAK = "Away"            # moet exact matchen met select-options
 DEFAULT_WATERCARE_NORMAL = "Savings"
-DEFAULT_TEMP_MARGIN = 1.0
+DEFAULT_TEMP_MARGIN = 0.5        # vraag ontstaat onder doel-marge
+# Een lopende run stookt door tot doel + overshoot: de kuip koelt
+# daarna zelf af (gebruik/wachttijd), dus eindigen op doel-marge is
+# structureel te koud. 1 K boven doel ~ gezien veilig; de bewaker
+# (doel + 1 + retour-marge) blijft de vangrail daarboven.
+DEFAULT_OVERSHOOT_K = 1.0
 PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan
 PEAK_MODE_OFF = "off"             # piek = hvac_mode off
 DEFAULT_PEAK_MODE = PEAK_MODE_SETPOINT
