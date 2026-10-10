@@ -131,22 +131,22 @@ schrijven werken.
 
 ## Aandachtspunten (meten = weten)
 
-- **Inlet (DP16) = trage pocket + ambient-drift — fase-afhankelijk
-  bruikbaar**: uit recorder-data (okt 2026): de inlaat-pocket convergeert
-  in >10 min (uitlaat-pocket ~5 min). Bij stilstaand water zakt DP16
-  helemaal naar buitentemp (18 °C bij 30 °C water). Korte meng-pulsen
-  (2–3 min) zijn te kort om te convergeren. Daarom:
-  - **rust (compressor ≥3 min uit): de KUIP (Gecko) is leidend** —
-    inlaat is dan ambient-gedreven of aan het convergeren
-  - **stoken: de (gecorrigeerde) inlaat is leidend** — de Gecko-buis
-    leest dan retour-water = bulk + per-pass ΔT (~5 K bij duty ~70)
-  - compensatie tijdens stoken: `demand = inlaat + k×(inlaat −
-    buiten)`, k ≈ 0.14, via `number.jacuzzi_inlet_sensor_compensation`
-  - **k is seizoensafhankelijk**: de ambient-drift van de pocket wordt
-    bepaald door het buiten-watertemp-verschil — in de zomer (buiten
-    ~25–30 °C) is die drift veel kleiner dan in de winter. Herkalibreren
-    na seizoenswisseling (zie GitHub issue): meetpunten uit recorder
-    bij compressor-uit + circulatie aangedreven voor >10 min.
+- **De KUIP (Gecko) is altijd de bulk-meting — de inlaat is nooit
+  leidend**: recorder-analyse okt 2026: na een compressor-stop met
+  circulatie blijft de Gecko de echte bulk volgen (44.5 → 43.5 over
+  30+ min — géén retour-afval, de ~5 K "per-pass ΔT" was een
+  model-aanname die niet klopte). De Poolex-sensoren zitten in
+  ambient-gekoppelde pockets:
+  - **inlaat (DP16): ~k×(inlaat−buiten) te laag, k ≈ 0.3–0.45** —
+    bij amb 13 °C las hij 35 terwijl de bulk ~44.5 was (−9.5 K);
+    in rust+flow ~−3 K; zakt 's nachts helemaal naar buitentemp.
+    Alleen fallback als de kuip-meting wegvalt
+    (`number.jacuzzi_inlet_sensor_compensation`, default nu 0.35)
+  - **uitlaat (DP25): ~−4 K bij amb 13 °C** — beter dan inlaat maar
+    ook niet betrouwbaar genoeg voor de vraag
+  - gevolg: de gemeten `ΔT (uit−in)` (~7.6) was opgeblazen door de
+    inlaat-fout; de echte per-pass ΔT is ~2 K. Kuip−ΔT is dus GEEN
+    goede bulk-schatting (geprobeerd, teruggedraaid)
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
 - **Regel-band: start onder doel, stop boven doel**: warmtevraag

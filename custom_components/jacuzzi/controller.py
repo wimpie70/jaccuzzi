@@ -823,28 +823,26 @@ class JacuzziController:
         tub_valid = jacuzzi.state not in ("unavailable", "unknown") and (
             1.0 <= tub_temp <= 45.0
         )
-        # Fase-afhankelijke vraag-bron (zie const.py):
-        # - RUST (compressor >=3 min uit) of geen flow: de kuip is
-        #   leidend. De inlaat-pocket is dan ambient-gedreven of nog
-        #   aan het convergeren (gemeten: >10 min, 's nachts zakt hij
-        #   helemaal naar buitentemp) — de kuip is dan de betrouwbare
-        #   bulk-meting (thermometer bevestigt dit).
-        # - STOKEN (compressor aan / net uit): de Gecko-buis leest
-        #   retour-water = bulk + per-pass ΔT (~5 K). Dan is de
-        #   inlaat leidend — die meet het aangezogen kuipwater —
-        #   met ambient-compensatie: DP16 zit thermisch gekoppeld
-        #   aan de buitenlucht; meetfout is geen vaste offset maar
-        #   ~k × (inlaat - buiten), k ≈ 0.14 uit recorder-data.
-        #   Kalibreerbaar via number 'Inlaat sensorcompensatie'.
-        #   Vangrail: bulk wordt ÓÓK geschat als kuip − ΔT (uit−in);
-        #   de hoogste schatting wint -> bij twijfel stopt hij eerder.
+        # De KUIP (Gecko) is altijd de bulk-meting — recorder-analyse
+        # (okt 2026): na een compressor-stop met circulatie blijft de
+        # kuip-lezing de echte bulk volgen (geen retour-afval) en bij
+        # rust+flow lezen kuip/uitlaat nagenoeg gelijk (~0.5 K).
+        # De Poolex-inlaat (DP16) zit in een ambient-gekoppelde pocket:
+        # meetfout ~k × (inlaat − buiten) met k ≈ 0.3–0.45 — bij amb
+        # ~13 °C las hij 35 terwijl de bulk ~44.5 was (−9.5 K!). Die
+        # pocket convergeert ook >10 min en zakt in rust naar
+        # buitentemp. Daarom: inlaat is NOOIT de vraag-bron, alleen
+        # fallback wanneer de kuip-meting wegvalt.
         inlet_temp = _attr_float(poolex, "current_temperature")
         inlet_valid = poolex.state not in ("unavailable", "unknown") and (
             1.0 <= inlet_temp <= 45.0
         )
-        flow_ok = self._since_true("flow_established", pump_on, 30)
         comp_idle = time.monotonic() - self._comp_last_on
-        if inlet_valid and flow_ok and comp_idle < COMP_IDLE_TRUST_S:
+        if tub_valid:
+            demand_temp, demand_valid, bron = tub_temp, True, "kuip"
+        elif inlet_valid and comp_idle < COMP_IDLE_TRUST_S:
+            # fallback: gecorrigeerde inlaat als de Gecko wegvalt —
+            # k ≈ 0.35 uit recorder-data (was 0.14; veel te laag).
             amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
             amb_ok = amb_st is not None and amb_st.state not in (
                 "unavailable", "unknown",
@@ -855,28 +853,10 @@ class JacuzziController:
             comp = (
                 k * max(0.0, inlet_temp - _float(amb_st)) if amb_ok else 0.0
             )
-            demand_temp = inlet_temp + comp
-            demand_valid, bron = True, f"inlaat+{comp:.1f}"
-            # Dubbele bulk-schatting: de Gecko-buis leest retour-water
-            # = bulk + per-pass ΔT (uit−in gemeten). kuip−ΔT is dus óók
-            # ~bulk. De HOOGSTE van de twee schattingen is leidend —
-            # stopt de run eerder wanneer de inlaat-compensatie te laag
-            # zit; de meng-check verifieert daarna toch de echte bulk.
-            out_st = self.hass.states.get(POOLEX_OUTLET_SENSOR)
-            if (
-                tub_valid
-                and out_st is not None
-                and out_st.state not in ("unavailable", "unknown")
-            ):
-                dt = _float(out_st, inlet_temp) - inlet_temp
-                if 0.0 <= dt <= 8.0:
-                    est = tub_temp - dt
-                    if est > demand_temp:
-                        demand_temp, bron = est, f"kuip−{dt:.1f}"
+            demand_temp, demand_valid, bron = (
+                inlet_temp + comp, True, f"inlaat+{comp:.1f}"
+            )
         else:
-            # kuip — leidend in rust; tijdens stoken zonder geldige
-            # inlaat is dit een te hoge meting (retour) -> stopt de
-            # vraag eerder, de veilige kant op.
             demand_temp, demand_valid, bron = tub_temp, tub_valid, "kuip"
         self.demand_temp = demand_temp if demand_valid else None
         self.demand_bron = (
@@ -919,18 +899,12 @@ class JacuzziController:
         # min. 30 min laag (compressor-rust) en min. 15 min hoog.
         # De kuip-oververhitting gaat vóór op de dwell — dat is het
         # vangnet als de compensatie of inlaat-meting fout zit.
-        # Tijdens/kort na stoken leest de Gecko-buis retour-water
-        # (bulk + per-pass ΔT ~5 K): dan is de marge ruimer, anders
-        # tript de bewaker op gezond retour-water. In rust blijft
-        # +OVERHEAT_MARGIN_K de harde grens.
-        # Overshoot telt mee: de run stopt bewust pas bij doel+overshoot
-        # (bulk ~39 bij doel 38) — de buis leest dan ~doel+overshoot+ΔT;
-        # zonder deze term zou de bewaker precies op de normale
-        # eindstand trippen.
-        guard_margin = overshoot + OVERHEAT_MARGIN_K + (
-            self._retour_offset if comp_idle < COMP_IDLE_TRUST_S else 0.0
+        # De kuip leest de echte bulk (niet retour+ΔT — recorder-data),
+        # dus de grens ligt kort boven de normale eindstand
+        # (doel + overshoot): +OVERHEAT_MARGIN_K erboven = fout.
+        overheated = (
+            tub_valid and tub_temp > setpoint + overshoot + OVERHEAT_MARGIN_K
         )
-        overheated = tub_valid and tub_temp > setpoint + guard_margin
 
         # Meng-check: na een vraag-stop een paar min circuleren+jets,
         # dan pas de echte (gemengde) bulk evalueren. Einde venster:

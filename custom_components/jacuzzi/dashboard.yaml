@@ -13,10 +13,12 @@ views:
       grid_options:
         columns: full
       title: Hoe de regeling werkt
-      content: '**Warmtevraag** ontstaat onder doel − 1 °C; een lopende run
-        stookt door tot het doel zelf. HA zet dan de circulatiepomp aan; de
-        Poolex start de compressor zelf zodra er flow is. Na een vraag-stop
-        volgt een meng-check: 6 min circuleren + jets, dan de bulk evalueren.
+      content: '**Warmtevraag** ontstaat onder doel − vraag-marge; een
+        lopende run stookt door tot doel + doorstook — de KUIP-meting is
+        leidend (de inlaat leest altijd te laag). HA zet dan de
+        circulatiepomp aan; de Poolex start de compressor zelf zodra er
+        flow is. Na een vraag-stop volgt een meng-check: 6 min
+        circuleren + jets, dan de bulk evalueren.
 
         **Hoe de Poolex zelf regelt**: het getal op de Poolex-thermostaat is de *water*temperatuur
         die de unit nastreeft (gemeten op de inlaat). Compressor loopt tot het water

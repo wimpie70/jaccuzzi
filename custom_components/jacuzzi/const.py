@@ -66,7 +66,7 @@ SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 # water). De meetfout is dus geen vaste offset maar ~k × (water-buiten);
 # gemeten uit recorder-data: k ≈ 0.14. demand_temp = inlaat + k ×
 # (inlaat - buiten). Kalibreerbaar via een number-entity.
-DEFAULT_INLET_COMPENSATION_K = 0.14
+DEFAULT_INLET_COMPENSATION_K = 0.35
 
 # Demand-remming via het Poolex-setpoint: de unit regelt zijn
 # compressor zelf op DP16, die te laag leest -> hij zou doorstoken
