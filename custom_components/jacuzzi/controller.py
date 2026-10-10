@@ -208,7 +208,12 @@ class JacuzziController:
         if self._demand_suppressed:
             return f"rem ({self.rem_reden})"
         if self.warmtevraag:
-            return f"vraag ({self.demand_bron})"
+            # Stop-drempel erbij: bron noemt de sensor (inlaat+x.x of
+            # kuip); de run stopt bij doel + overshoot op die meting.
+            stop = self._heat_setpoint + float(
+                self.conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K)
+            )
+            return f"vraag ({self.demand_bron} tot {stop:.0f})"
         return "idle"
 
     # --- helpers -----------------------------------------------------
