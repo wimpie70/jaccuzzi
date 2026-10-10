@@ -860,11 +860,22 @@ class JacuzziController:
             and time.monotonic() < self._verify_until
             else bron
         )
+        # Echte hysterese: de vraag ontstaat onder doel-marge, maar een
+        # lopende (niet-geremde) run stookt door tot het DOEL zelf —
+        # anders convergeert de kuip op doel-marge i.p.v. doel.
+        # Gevolg: `not warmtevraag` betekent "doel bereikt" zolang wij
+        # niet remmen, en "bulk nog te warm om te hervatten" als we dat
+        # wel doen — beide zijn precies wat de takken hieronder vragen.
         self.warmtevraag = (
             not poolex_off
             and self.heating_enabled
             and demand_valid
-            and demand_temp < setpoint - self.conf["temp_margin"]
+            and (
+                demand_temp < setpoint - self.conf["temp_margin"]
+                or (
+                    not self._demand_suppressed and demand_temp < setpoint
+                )
+            )
         )
         self._track_cooldown(tub_temp, tub_valid, pump_on, compressor_on)
 

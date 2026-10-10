@@ -89,7 +89,7 @@ class JacuzziDemandBinarySensor(_JacuzziBinarySensor):
 
     @property
     def is_on(self) -> bool:
-        """True when tub temp is below the Poolex setpoint minus margin."""
+        """True bij vraag (< doel-marge) of een lopende run (< doel)."""
         return self._controller.warmtevraag
 
 
