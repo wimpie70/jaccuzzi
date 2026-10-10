@@ -1,3 +1,11 @@
+# !!! VERVALLEN — NIET DEPLOYEN !!!
+# Alle functies in dit package (piekblokkade, pomp-aansturing,
+# failsafe, fault-notify, pomp-door-HA vlag) zitten sinds de
+# controller in de custom integration zelf (>= v0.7.x). Deze
+# automations zouden nu DUBBEL draaien en de controller tegenwerken
+# (bv. pomp uit tijdens een run, valse fault-notify). Bestand blijft
+# alleen als historische referentie.
+#
 # Jacuzzi/Poolex package — kopieer naar /config/packages/jacuzzi.yaml
 # en voeg toe aan configuration.yaml:
 #
