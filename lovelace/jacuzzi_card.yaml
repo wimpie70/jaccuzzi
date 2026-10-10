@@ -56,6 +56,10 @@ cards:
         name: Retour-marge (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
+      - entity: number.jacuzzi_heat_demand_margin
+        name: Vraag-marge (start onder doel)
+      - entity: number.jacuzzi_heat_overshoot_above_target
+        name: Doorstook (stop boven doel)
     - type: horizontal-stack
       cards:
       - type: thermostat
@@ -191,10 +195,6 @@ cards:
         name: Meetinterval (C9)
       - entity: number.jacuzzi_inlet_sensor_compensation
         name: Inlaatcompensatie (K/K)
-      - entity: number.jacuzzi_heat_demand_margin
-        name: Vraag-marge (start onder doel)
-      - entity: number.jacuzzi_heat_overshoot_above_target
-        name: Doorstook (stop boven doel)
       - entity: switch.jacuzzi_poolex_always_on
         name: Altijd aan (vorstbeveiliging)
     - type: entities
