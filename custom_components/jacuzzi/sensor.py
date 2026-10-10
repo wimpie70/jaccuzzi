@@ -82,6 +82,9 @@ async def async_setup_entry(
         JacuzziPoolexFanSensor(entry),
         JacuzziPoolexFaultSensor(entry),
         JacuzziPoolexCompressorSensor(entry),
+        JacuzziRegelstatusSensor(entry),
+        JacuzziMeetbronSensor(entry),
+        JacuzziRetourMargeSensor(entry),
     ]
     conf = {**entry.data, **entry.options}
     for conf_key, translation_key in ENERGY_SENSORS:
@@ -889,3 +892,87 @@ class JacuzziEnergySensor(RestoreSensor):
         self._last_w = watts
         self._attr_native_value = round(self._kwh, 3)
         self.async_write_ha_state()
+
+
+class _ControllerSensor(SensorEntity):
+    """Base: sensor die direct een controller-waarde exposeert.
+
+    Anders dan een attribuut op climate: echte sensoren zijn niet
+    'editable' in kaarten, tonen netjes de waarde, en hebben history.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+
+    def __init__(self, entry: JacuzziConfigEntry, key: str) -> None:
+        """Bind aan de controller."""
+        self._entry = entry
+        self._controller = entry.runtime_data
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_translation_key = key
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": "Jacuzzi",
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe op controller-updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
+        )
+
+    @callback
+    def _async_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class JacuzziRegelstatusSensor(_ControllerSensor):
+    """Eén leesbare regeltoestand:
+
+    piekblokkade | meng-check | rem (reden) | vraag (bron) | idle.
+    """
+
+    _attr_icon = "mdi:thermostat-auto"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        super().__init__(entry, "regelstatus")
+
+    @property
+    def native_value(self) -> str | None:
+        """Huidige regeltoestand."""
+        return self._controller.regelstatus
+
+
+class JacuzziMeetbronSensor(_ControllerSensor):
+    """Welke temperatuur-bron de vraag leidt (kuip / inlaat+x.x)."""
+
+    _attr_icon = "mdi:thermometer-probe"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        super().__init__(entry, "meetbron")
+
+    @property
+    def native_value(self) -> str | None:
+        """Leidende bron of leeg tijdens idle."""
+        return self._controller.demand_bron or None
+
+
+class JacuzziRetourMargeSensor(_ControllerSensor):
+    """Geleerde kuip-vs-bulk offset (EMA per meng-check)."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:shield-thermometer"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        super().__init__(entry, "retour_marge")
+
+    @property
+    def native_value(self) -> float:
+        """Geleerde bewakingsmarge in K."""
+        return round(self._controller.retour_offset, 1)

@@ -48,17 +48,11 @@ cards:
     - type: entities
       show_header_toggle: false
       entities:
-      - entity: climate.jacuzzi_tub_target
-        attribute: regelstatus
+      - entity: sensor.jacuzzi_regelstatus
         name: Regelstatus
-      - entity: climate.jacuzzi_tub_target
-        attribute: rem_actief
-        name: Rem (reden)
-      - entity: climate.jacuzzi_tub_target
-        attribute: demand_bron
+      - entity: sensor.jacuzzi_meetbron
         name: Meetbron vraag
-      - entity: climate.jacuzzi_tub_target
-        attribute: retour_marge
+      - entity: sensor.jacuzzi_retour_marge
         name: Retour-marge (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief

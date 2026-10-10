@@ -120,6 +120,15 @@
       },
       "heat_loss": {
         "name": "Heat loss (W/K)"
+      },
+      "regelstatus": {
+        "name": "Control status"
+      },
+      "meetbron": {
+        "name": "Demand source"
+      },
+      "retour_marge": {
+        "name": "Return margin"
       }
     },
     "switch": {

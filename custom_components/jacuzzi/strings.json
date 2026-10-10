@@ -120,6 +120,15 @@
       },
       "heat_loss": {
         "name": "Warmteverlies (W/K)"
+      },
+      "regelstatus": {
+        "name": "Regelstatus"
+      },
+      "meetbron": {
+        "name": "Meetbron vraag"
+      },
+      "retour_marge": {
+        "name": "Retour-marge"
       }
     },
     "switch": {
