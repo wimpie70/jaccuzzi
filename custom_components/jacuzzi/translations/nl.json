@@ -79,6 +79,9 @@
       },
       "gecko_heater": {
         "name": "Element verwarming"
+      },
+      "compressor_actief": {
+        "name": "Compressor actief"
       }
     },
     "sensor": {

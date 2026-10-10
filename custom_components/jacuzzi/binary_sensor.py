@@ -26,6 +26,7 @@ async def async_setup_entry(
             JacuzziDemandBinarySensor(entry),
             JacuzziFlowBinarySensor(entry),
             JacuzziGeckoHeaterBinarySensor(entry),
+            JacuzziCompressorBinarySensor(entry),
         ]
     )
 
@@ -115,6 +116,27 @@ class JacuzziFlowBinarySensor(_JacuzziBinarySensor):
         if state is None or state.state in ("unavailable", "unknown"):
             return None
         return state.state == "on"
+
+
+class JacuzziCompressorBinarySensor(_JacuzziBinarySensor):
+    """Aan wanneer de Poolex-compressor draait (duty > 0).
+
+    Zelfde bron als de controller (duty-sensor via config) — het
+    'lampje' dat de numerieke compressor-% sensor niet kan tonen.
+    """
+
+    _attr_translation_key = "compressor_actief"
+    _attr_icon = "mdi:air-conditioner"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Set unique id."""
+        super().__init__(entry)
+        self._attr_unique_id = f"{entry.entry_id}_compressor_actief"
+
+    @property
+    def is_on(self) -> bool:
+        """True wanneer de compressor duty > 0 rapporteert."""
+        return self._controller.compressor_on
 
 
 class JacuzziGeckoHeaterBinarySensor(_JacuzziBinarySensor):

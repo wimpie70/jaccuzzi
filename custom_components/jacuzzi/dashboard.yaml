@@ -129,8 +129,10 @@ views:
         name: Aan/uit
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag
-      - entity: sensor.jacuzzi_poolex_compressor
+      - entity: binary_sensor.jacuzzi_compressor_actief
         name: Compressor
+      - entity: sensor.jacuzzi_poolex_compressor
+        name: Duty %
       - entity: binary_sensor.pool_heat_pump_problem
         name: Fault
     - type: history-graph
