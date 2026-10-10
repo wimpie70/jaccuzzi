@@ -11,7 +11,7 @@ views:
     cards:
     - type: markdown
       grid_options:
-        columns: 12
+        columns: full
       title: Hoe de regeling werkt
       content: '**Warmtevraag** ontstaat onder doel − 1 °C; een lopende run
         stookt door tot het doel zelf. HA zet dan de circulatiepomp aan; de
@@ -51,12 +51,12 @@ views:
     cards:
     - type: thermostat
       grid_options:
-        columns: 12
+        columns: full
       entity: climate.jacuzzi_tub_target
       name: Kuip-doel (onze thermostaat)
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       show_header_toggle: false
       entities:
       - entity: switch.jacuzzi_maintenance
@@ -85,7 +85,7 @@ views:
       name: Poolex (actuator)
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       title: Gecko — kuip
       show_header_toggle: false
       entities:
@@ -106,7 +106,7 @@ views:
     cards:
     - type: glance
       grid_options:
-        columns: 12
+        columns: full
       title: Gecko — circulatie
       entities:
       - entity: fan.jaccuzzi_waterfall
@@ -119,7 +119,7 @@ views:
         name: Mengen 2
     - type: glance
       grid_options:
-        columns: 12
+        columns: full
       title: Poolex — warmtepomp
       entities:
       - entity: switch.jacuzzi_poolex_power
@@ -134,7 +134,7 @@ views:
         name: Fault
     - type: history-graph
       grid_options:
-        columns: 12
+        columns: full
       title: Temperaturen (24 uur)
       hours_to_show: 24
       entities:
@@ -154,7 +154,7 @@ views:
         name: Buiten
     - type: history-graph
       grid_options:
-        columns: 12
+        columns: full
       title: Aan/uit (24 uur)
       hours_to_show: 24
       entities:
@@ -185,7 +185,7 @@ views:
     cards:
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       title: Piekblokkade
       entities:
       - entity: time.jacuzzi_peak_start
@@ -198,7 +198,7 @@ views:
         name: Watercare (piek = Super Savings)
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       title: Meng-puls
       show_header_toggle: false
       entities:
@@ -210,7 +210,7 @@ views:
         name: Pulsduur
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       title: Poolex — sturing
       show_header_toggle: false
       entities:
@@ -232,7 +232,7 @@ views:
         name: Altijd aan (vorstbeveiliging)
     - type: entities
       grid_options:
-        columns: 12
+        columns: full
       title: Verbruik
       show_header_toggle: false
       entities:
