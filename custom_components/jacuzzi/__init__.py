@@ -25,10 +25,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> b
     """Set up the controller and entities from a config entry."""
     conf = {**entry.data, **entry.options}
     controller = JacuzziController(hass, conf)
-    await controller.async_start()
     entry.runtime_data = controller
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    # Eerst het opgeslagen kuip-doel en hvac-mode herstellen; nooit met
+    # het default-doel verwarmen tijdens startup of een options-reload.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await controller.async_start()
     await async_setup_dashboard(hass)
     return True
 
@@ -42,6 +44,6 @@ async def _async_update_listener(
 
 async def async_unload_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> bool:
     """Unload: stop listeners and remove entities."""
-    entry.runtime_data.async_stop()
+    await entry.runtime_data.async_shutdown()
     teardown_dashboard(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

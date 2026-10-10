@@ -945,7 +945,7 @@ class JacuzziRegelstatusSensor(_ControllerSensor):
 
 
 class JacuzziMeetbronSensor(_ControllerSensor):
-    """Welke temperatuur-bron de vraag leidt (kuip / inlaat+x.x)."""
+    """Leidende bron: uitsluitend kuip, met meng-check als verificatiefase."""
 
     _attr_icon = "mdi:thermometer-probe"
 
@@ -960,7 +960,7 @@ class JacuzziMeetbronSensor(_ControllerSensor):
 
 
 class JacuzziRetourMargeSensor(_ControllerSensor):
-    """Geleerde kuip-vs-bulk offset (EMA per meng-check)."""
+    """Diagnostische EMA van stopmeting minus mengmeting; geen regelcorrectie."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -974,5 +974,5 @@ class JacuzziRetourMargeSensor(_ControllerSensor):
 
     @property
     def native_value(self) -> float:
-        """Geleerde bewakingsmarge in K."""
+        """Geleerde meng-offset in K; verhoogt geen temperatuurgrens."""
         return round(self._controller.retour_offset, 1)

@@ -89,7 +89,7 @@ class JacuzziDemandBinarySensor(_JacuzziBinarySensor):
 
     @property
     def is_on(self) -> bool:
-        """True bij vraag (< doel-marge) of een lopende run (< doel)."""
+        """True bij vraag onder doel-marge of lopende run tot doel+doorstook."""
         return self._controller.warmtevraag
 
 
@@ -134,8 +134,8 @@ class JacuzziCompressorBinarySensor(_JacuzziBinarySensor):
         self._attr_unique_id = f"{entry.entry_id}_compressor_actief"
 
     @property
-    def is_on(self) -> bool:
-        """True wanneer de compressor duty > 0 rapporteert."""
+    def is_on(self) -> bool | None:
+        """True bij duty > 0; onbekende telemetrie is NIET compressor-uit."""
         return self._controller.compressor_on
 
 

@@ -46,15 +46,14 @@ DEFAULT_PEAK_END = "20:00"
 DEFAULT_WATERCARE_PEAK = "Away"            # moet exact matchen met select-options
 DEFAULT_WATERCARE_NORMAL = "Savings"
 DEFAULT_TEMP_MARGIN = 0.5        # vraag ontstaat onder doel-marge
-# Een lopende run stookt door tot doel + overshoot: de kuip koelt
-# daarna zelf af (gebruik/wachttijd), dus eindigen op doel-marge is
-# structureel te koud. 1 K boven doel ~ gezien veilig; de bewaker
-# (doel + 1 + retour-marge) blijft de vangrail daarboven.
+# Doorstook is een expliciete comfortmarge, geen sensorcorrectie.
+# Normale stop = min(doel + doorstook, MAX_TUB_C); alle stops gaan
+# vóór looptijd-timers. Retour-marge verhoogt GEEN temperatuurgrens.
 DEFAULT_OVERSHOOT_K = 1.0
 PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan
-PEAK_MODE_OFF = "off"             # piek = hvac_mode off
+PEAK_MODE_OFF = "off"             # legacy configwaarde; nooit meer uitgevoerd
 DEFAULT_PEAK_MODE = PEAK_MODE_SETPOINT
-DEFAULT_PEAK_SETPOINT = 4.0       # °C — laagste setpoint, unit idle
+DEFAULT_PEAK_SETPOINT = 15.0      # °C — vaste rem, unit blijft aan
 DEFAULT_NORMAL_SETPOINT = 38.0    # °C — fallback als geen opgeslagen setpoint
 DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
 DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
@@ -70,10 +69,10 @@ SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 # De Poolex-INLAAT (DP16) leest ALTIJD te laag: pocket thermisch
 # gekoppeld aan buitenlucht, fout ~k×(inlaat−buiten) met k ≈ 0.35–0.45.
 # Bij amb 13 °C las hij 35 terwijl de bulk ~44.5 was (−9.5 K!). De
-# "per-pass ΔT ~5-8 K" (uit−in) was een artefact van diezelfde
-# inlaat-fout; de echte ΔT is ~2 K. Daarom is de inlaat NOOIT de
-# vraag-bron — enkel fallback als de kuip-meting wegvalt. Deze
-# compensatie dient alleen die fallback (en display): k ≈ 0.35.
+# Gemeten uit−in bevat die sensorfout en mag NIET van de kuip worden
+# afgetrokken. De echte per-pass ΔT volgt niet betrouwbaar uit deze
+# pockets. Daarom is de inlaat NOOIT de vraag-bron, OOK NIET als
+# fallback: kuipmeting weg/oud -> stop. k blijft alleen diagnostiek.
 DEFAULT_INLET_COMPENSATION_K = 0.35
 
 # Demand-remming via het Poolex-setpoint: de unit regelt zijn
@@ -82,35 +81,31 @@ DEFAULT_INLET_COMPENSATION_K = 0.35
 # vraag weg -> setpoint naar de vloer; vraag terug -> herstellen.
 # Dwell-tijden voorkomen kort-cyclen van de compressor.
 POOLEX_SETPOINT_FLOOR = 15.0   # tuya minimum in heat-mode
-SP_SUPPRESS_REST_S = 1800      # setpoint laag >=30 min (compressor-rust)
-SP_SUPPRESS_RUN_S = 900        # setpoint hoog >=15 min (min. stookrun)
+SP_SUPPRESS_REST_S = 1800      # normale anti-pendelrust na een run
+STARTUP_REST_S = 30           # aparte korte test/startup-rust na herstart/reload
+# Temperatuur- en sensorstops mogen nooit op een minimale looptijd wachten.
+MAX_TUB_C = 40.0              # absolute softwaregrens; overshoot wordt hier begrensd
+SENSOR_MAX_AGE_S = 300        # vereist periodieke HA-rapportage, ook bij gelijke waarde
+BRAKE_CONFIRM_S = 90         # setpoint laag EN compressor uit moeten bevestigd zijn
+ACTUATOR_RETRY_S = 30        # herhalen zonder event/service-storm
 OVERHEAT_MARGIN_K = 1.0        # kuip > doel + overshoot + dit ->
                                # meteen remmen
 
-# Stop-meng-meet: bij einde warmtevraag tijdens een run schrijven we de
-# compressor-rem op basis van de (gecorrigeerde) inlaat — maar die
-# leest systematisch te laag (pocket + ambient, ~5-9 K fout waargenomen
-# 08/10; echte stratificatie blijkt klein: ~0.5 K gemeten 10/10). Eerst
-# een paar minuten circuleren + jets mengen, dan pas de ECHTE bulk
-# evalueren: nog vraag -> run hervatten (geen pendel: bulk klopt dan
-# echt niet), geen vraag -> definitief klaar.
+# Stop-meng-meet: stoppen op KUIP-grens, compressorstop bevestigen,
+# vervolgens circuleren + jets en pas daarna de kuip opnieuw beoordelen.
+# Een onderbroken circulatie maakt de meng-timer ongeldig. Sensor- of
+# mengfouten mogen nooit toestemming tot vervroegd hervatten geven.
 VERIFY_MIX_S = 360        # circulatie+meng-duur na een vraag-stop —
                           # ook >= de ~3-5 min compressor-egaliseertijd
 VERIFY_MAX_RESUMES = 2    # max hervattingen via meng-check per sessie
-# Lerende retour-offset: hoeveel heter de kuip-sensor las dan de
-# gemengde bulk bleek te zijn -> vervangt de vaste RETOUR_GUARD_K
-# als oververhittings-marge tijdens stoken. EMA-geleerd, geclamped:
-# te laag = vals alarm, te hoog = iets anders kapot.
-RETOUR_GUARD_MIN_K = 2.0
+# Lerende meng-offset is uitsluitend diagnostiek (stopmeting minus
+# meting na mengen). Dit is GEEN sensorcorrectie of veiligheidsmarge
+# en verhoogt NOOIT een stopgrens.
+RETOUR_GUARD_MIN_K = 0.0       # diagnostiek mag ook géén mengverschil leren
 RETOUR_GUARD_MAX_K = 9.0
 
-# COMP_IDLE_TRUST_S gold toen de inlaat nog vraag-bron was tijdens
-# stoken; nu is de kuip áltijd bron en de inlaat enkel fallback als
-# de kuip wegvalt — de window bepaalt hoelang de fallback na een
-# compressor-run nog als "vers" geldt.
-COMP_IDLE_TRUST_S = 180
-RETOUR_GUARD_K = 5.0           # startwaarde lerende retour-offset
-                               # (EMA per meng-check; zie controller)
+RETOUR_GUARD_K = 0.0           # geen historische meng-offset bekend;
+                               # opgeslagen EMA wordt bij startup hersteld
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
@@ -126,7 +121,8 @@ DEFAULT_MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
 
 # Timers (seconds)
 PUMP_RUNON_S = 180       # nadraaitijd pomp
-FAILSAFE_DELAY_S = 15    # compressor aan + pomp uit -> pomp aan
+PUMP_RESCUE_RETRY_S = 5  # benodigd flow-herstel niet 30 s blokkeren
+GECKO_MAINT_TARGET_C = 18.0  # bekende lage pack-stand als min_temp ontbreekt
 MAINT_PUMP_GRACE_S = 90  # Gecko check-cyclus (~40 s) niet tegenwerken
 MAINT_PUMP_RETRY_S = 300  # pack weigert turn_off tijdens eigen cyclus
 PROBLEM_DELAY_S = 120    # fault-bit aan voordat we melden — d1 mag

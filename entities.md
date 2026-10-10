@@ -140,12 +140,12 @@ schrijven werken.
   - **inlaat (DP16): ~k×(inlaat−buiten) te laag, k ≈ 0.3–0.45** —
     bij amb 13 °C las hij 35 terwijl de bulk ~44.5 was (−9.5 K);
     in rust+flow ~−3 K; zakt 's nachts helemaal naar buitentemp.
-    Alleen fallback als de kuip-meting wegvalt
-    (`number.jacuzzi_inlet_sensor_compensation`, default nu 0.35)
+    NOOIT fallback als de kuip-meting wegvalt: verwarming wordt dan
+    geblokkeerd (`number.jacuzzi_inlet_sensor_compensation` is alleen diagnostiek)
   - **uitlaat (DP25): ~−4 K bij amb 13 °C** — beter dan inlaat maar
     ook niet betrouwbaar genoeg voor de vraag
   - gevolg: de gemeten `ΔT (uit−in)` (~7.6) was opgeblazen door de
-    inlaat-fout; de echte per-pass ΔT is ~2 K. Kuip−ΔT is dus GEEN
+    inlaat-fout; de echte per-pass ΔT is niet betrouwbaar af te leiden. Kuip−ΔT is dus GEEN
     goede bulk-schatting (geprobeerd, teruggedraaid)
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
@@ -160,14 +160,16 @@ schrijven werken.
   te laag (pocket + ambient, 08/10: inlaat 35 vs kuip 44.5 = ~9.5 K —
   dat was vooral sensor-fout, géén echte stratificatie; eerste echte
   top-vs-bulk meting 10/10: slechts 0.5 K). Daarom stopt de run bij
-  de gecorrigeerde-inlaat-drempel, circuleert + jettet de kuip dan
+  de KUIP-drempel (doel + doorstook, maximaal 40 °C), bevestigt
+  compressor-uit en circuleert + jettet de kuip dan
   6 min (`VERIFY_MIX_S`), en evalueert pas dán de gemengde bulk: nog
   vraag -> hervat (max 2x, `VERIFY_MAX_RESUMES`), op temp -> klaar.
   `demand_bron` toont `meng-check` in dat venster.
 - **Lerende retour-marge**: bij elke meng-check meet de controller
   `t = kuip_bij_stop − kuip_na_mengen` = de echte top-vs-bulk offset
-  van die run (klein: ~0.5 K). Die vervangt de vaste bewakings-marge
-  (EMA, 0.3-gewicht, geclamped 2–9 K = `RETOUR_GUARD_MIN/MAX_K`).
+  van die run (klein: ~0.5 K). Uitsluitend diagnostiek, GEEN verhoging
+  van een temperatuurgrens (EMA, 0.3-gewicht, geclamped 0–9 K).
+  Blijft via climate-restore bewaard over herstarts/onderhoudsreloads.
   Zichtbaar als `sensor.jacuzzi_return_margin` (+ attribuut
   `retour_marge` op `climate.jacuzzi_tub_target`). Let op: HA
   slugifies entity_ids uit de EN-vertaalnaam — Nederlandse
@@ -179,7 +181,7 @@ schrijven werken.
 - **Uitlaat (DP25) ook licht ambient-gekoppeld**: zakt bij stilstaand
   water ook, maar langzamer dan DP16 — kleinere k, minder kritiek
   omdat hij niet voor warmtevraag gebruikt wordt. De ΔT-sensor
-  (uit−in) is tijdens stoken wel betrouwbaar.
+  (uit−in) bevat beide sensorfouten en is geen betrouwbare bulkcorrectie.
 - **DP102 = "Inlet temperature compensation"** (number, −4..0 °C):
   fabrieks-kalibratie op de interne regelkring — verandert de
   GERAPPORTEERDE DP16 niet (getest: −4 gaf geen zichtbaar verschil).

@@ -1,6 +1,10 @@
-"""Switch platform: Poolex aan/uit (stelt de climate hvac_mode)."""
+"""Switch platform: warmte toestaan/remmen; Poolex zelf NOOIT uitschakelen."""
 
 from __future__ import annotations
+
+import asyncio
+import logging
+import math
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant, callback
@@ -11,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
 from .const import (
+    CONF_COMPRESSOR_SENSOR,
     CONF_JACUZZI_CLIMATE,
     CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
@@ -25,7 +30,11 @@ from .const import (
     DEFAULT_POOLEX_ALWAYS_ON,
     DOMAIN,
     MIX_PUMPS,
+    POOLEX_SETPOINT_FLOOR,
+    GECKO_MAINT_TARGET_C,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -45,7 +54,7 @@ async def async_setup_entry(
 
 
 class JacuzziPoolexSwitch(SwitchEntity):
-    """Aan/uit voor de warmtepomp — stelt hvac_mode van de climate."""
+    """Warmtevraag toestaan/blokkeren; schakelt de Poolex-unit nooit uit."""
 
     _attr_should_poll = False
     _attr_has_entity_name = True
@@ -67,29 +76,19 @@ class JacuzziPoolexSwitch(SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Aan als de Poolex-climate niet op 'off' staat."""
-        state = self.hass.states.get(self._poolex_entity())
-        if state is None:
-            return None
-        return state.state != "off"
+        """Warmtevraag toegestaan; de Poolex-unit zelf blijft altijd aan."""
+        controller = self._entry.runtime_data
+        return controller.heating_enabled and not controller.conf.get(CONF_MAINTENANCE, False)
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Zet de Poolex op heat."""
-        await self.hass.services.async_call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": self._poolex_entity(), "hvac_mode": "heat"},
-            blocking=True,
-        )
+        """Sta verwarming toe; controller bewaakt sensoren en rusttijd."""
+        self._entry.runtime_data.async_set_heating_enabled(True)
+        await self._entry.runtime_data._async_evaluate()
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Zet de Poolex uit."""
-        await self.hass.services.async_call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": self._poolex_entity(), "hvac_mode": "off"},
-            blocking=True,
-        )
+        """Zet alleen warmtevraag uit: rem 15 °C, NOOIT Poolex off."""
+        self._entry.runtime_data.async_set_heating_enabled(False)
+        await self._entry.runtime_data._async_evaluate()
 
     async def async_added_to_hass(self) -> None:
         """Subscribe op controller-updates én op de echte climate-state.
@@ -207,14 +206,14 @@ class JacuzziMixSwitch(SwitchEntity):
 
 
 class JacuzziMaintenanceSwitch(SwitchEntity):
-    """Onderhoudsmodus: alle automatiseringen uit, kuip standby, Poolex off.
+    """Onderhoudsmodus: warmte geblokkeerd, Poolex aan op 15 °C.
 
     Aan = bewaar de huidige standen (Poolex hvac-mode/setpoint, watercare)
-    in options en zet alles in onderhoud: Poolex off, watercare op de
+    in options en zet alles in onderhoud: Poolex 15 °C, watercare op de
     standby/away-stand (of piek-stand als geen van beide bestaat),
     circulatie- en
     massagepompen uit. De controller
-    slaat dan álle acties over (incl. failsafe en altijd-aan guard).
+    handhaaft de 15 °C-rem maar start geen verwarming of menging.
     Uit = opgeslagen standen terugzetten; de controller hervat.
     """
 
@@ -246,13 +245,36 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
         return {**self._entry.data, **self._entry.options}
 
     async def _call(self, domain: str, service: str, data: dict) -> None:
-        await self.hass.services.async_call(domain, service, data, blocking=True)
+        if domain == "climate" and data.get("hvac_mode") == "off":
+            raise ValueError("Poolex mag niet op off; gebruik rem-setpoint 15 °C")
+        await asyncio.wait_for(
+            self.hass.services.async_call(domain, service, data, blocking=True), 10,
+        )
+
+    async def _try_call(self, domain: str, service: str, data: dict) -> bool:
+        """Een falend onderhoudscommando mag de overige stopacties niet overslaan."""
+        try:
+            await self._call(domain, service, data)
+            return True
+        except Exception as err:
+            _LOGGER.warning("Onderhoudscommando %s.%s mislukt: %s", domain, service, err)
+            return False
 
     async def async_turn_on(self, **kwargs) -> None:
         """Bewaar de huidige standen en zet alles in onderhoud."""
+        if self.is_on:
+            return  # herhaald 'aan' mag het oorspronkelijke snapshot niet overschrijven
         conf = self._conf()
         poolex = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
         watercare = self.hass.states.get(conf[CONF_WATERCARE_SELECT])
+        gecko = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        gecko_target = None if gecko is None else gecko.attributes.get("temperature")
+        try:
+            gecko_target = float(gecko_target)
+            if not math.isfinite(gecko_target):
+                gecko_target = None
+        except (TypeError, ValueError):
+            gecko_target = None
         # Watercare naar standby-achtige stand: zoek in de opties van de
         # select op voorkeursvolgorde ('standby' schort alles op, 'away'
         # houdt alleen vorstbewaking aan), anders de piek-stand.
@@ -277,18 +299,28 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 else poolex.attributes.get("temperature")
             ),
             "watercare": None if watercare is None else watercare.state,
+            "gecko_setpoint": gecko_target,
             # de gekozen standby-stand: handhaven tijdens onderhoud
             "standby_mode": standby,
         }
         options[CONF_MAINTENANCE] = True
-        # eerst de vlag: de herladende controller mag niets terugvechten
+        # Blokkeer ook de OUDE controller onmiddellijk; options-reload
+        # is asynchroon en mag niet tussendoor de compressor herstellen.
+        controller = self._entry.runtime_data
+        controller.conf[CONF_MAINTENANCE] = True
+        # Snapshot/vlag vóór de eerste await opslaan: ook gelijktijdig
+        # opnieuw 'aan' moet het oorspronkelijke herstelpunt behouden.
         self.hass.config_entries.async_update_entry(self._entry, options=options)
-        await self._call(
-            "climate",
-            "set_hvac_mode",
-            {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": "off"},
-        )
-        await self._call(
+        await controller.async_shutdown()
+        await self._try_call("climate", "set_temperature", {
+            "entity_id": conf[CONF_POOLEX_CLIMATE], "temperature": POOLEX_SETPOINT_FLOOR,
+        })
+        # Warmtevragen van BEIDE actuators laag; het eigen kuip-doel bewaren.
+        await self._try_call("climate", "set_temperature", {
+            "entity_id": conf[CONF_JACUZZI_CLIMATE],
+            "temperature": self._entry.runtime_data.maintenance_gecko_target(),
+        })
+        await self._try_call(
             "select",
             "select_option",
             {
@@ -296,8 +328,20 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 "option": standby,
             },
         )
+        # '15 °C' service-succes bewijst geen compressorstop. Tot duty=0
+        # bevestigd is behouden we flow; de onderhoudscontroller rondt af.
+        compressor = self.hass.states.get(conf[CONF_COMPRESSOR_SENSOR])
+        try:
+            duty = float(compressor.state) if compressor is not None else float("nan")
+        except (ValueError, TypeError):
+            duty = float("nan")
+        compressor_stopped = self._entry.runtime_data._fresh(compressor) and math.isfinite(duty) and duty == 0
         for fan in (conf[CONF_PUMP_FAN], *MIX_PUMPS):
-            await self._call("fan", "turn_off", {"entity_id": fan})
+            # Alleen de koelende circulatie wacht op compressor-uit;
+            # massagepompen mogen onmiddellijk uit bij onderhoud.
+            if fan == conf[CONF_PUMP_FAN] and not compressor_stopped:
+                continue
+            await self._try_call("fan", "turn_off", {"entity_id": fan})
         # Waarschuwing: de Gecko-pack doet zelf in.flo-flow-checks en
         # check-cycli (pomp droog bij lege kuip!) — software kan die niet
         # blokkeren, dus de groep moet er echt uit.
@@ -307,8 +351,9 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 conf[CONF_NOTIFY_SERVICE],
                 {
                     "title": "Jacuzzi: onderhoudsmodus aan",
-                    "message": "Poolex staat op off en de automatiseringen "
-                    "zijn uit — maar de Gecko-pack kan zelf pompen starten "
+                    "message": "Onderhoud gevraagd: Poolex 15 °C, Gecko-doel minimum, "
+                    "pompen uit zodra compressor-uit bevestigd is. Controleer de standen; "
+                    "de Gecko-pack kan zelf pompen starten "
                     "(flow-checks). Bij een lege kuip: schakel de groep "
                     "uit in de meterkast!",
                 },
@@ -316,27 +361,34 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Herstel de bewaarde standen; de controller hervat."""
+        if not self.is_on:
+            return  # geen oude onderhoudssnapshot opnieuw toepassen tijdens een run
         conf = self._conf()
         saved = self._entry.options.get(CONF_MAINT_SAVED) or {}
         options = dict(self._entry.options)
         options[CONF_MAINTENANCE] = False
-        self.hass.config_entries.async_update_entry(self._entry, options=options)
-        mode = saved.get("poolex_mode")
-        if mode and mode not in ("unavailable", "unknown"):
-            await self._call(
-                "climate",
-                "set_hvac_mode",
-                {"entity_id": conf[CONF_POOLEX_CLIMATE], "hvac_mode": mode},
-            )
-        if saved.get("poolex_setpoint") is not None:
-            await self._call(
-                "climate",
-                "set_temperature",
-                {
-                    "entity_id": conf[CONF_POOLEX_CLIMATE],
-                    "temperature": saved["poolex_setpoint"],
-                },
-            )
+        # Eerst laag, dán eventueel standby herstellen, pas als laatste
+        # onderhoud vrijgeven. Een gefaalde call laat onderhoud actief.
+        await self._call("climate", "set_temperature", {
+            "entity_id": conf[CONF_POOLEX_CLIMATE], "temperature": POOLEX_SETPOINT_FLOOR,
+        })
+        # Oude bewaarde hvac_mode='off' NOOIT herstellen. De unit blijft
+        # in standby; de controller herstelt alleen ons warmteverzoek.
+        # Bewaard hoog actuator-setpoint is GEEN gebruikersdoel en wordt
+        # niet hersteld; alleen de controller mag weer stoken.
+        try:
+            gecko_target = float(saved.get("gecko_setpoint"))
+        except (TypeError, ValueError):
+            gecko_target = float("nan")
+        # De normale lage Gecko-stand (bv. 18 °C) wél terugzetten. Geen
+        # oude hoge pack-vraag blind herstellen naast onze kuip-regelaar.
+        floor = self._entry.runtime_data.maintenance_gecko_target()
+        if math.isfinite(gecko_target) and floor <= gecko_target <= GECKO_MAINT_TARGET_C:
+            await self._call("climate", "set_temperature", {
+                "entity_id": conf[CONF_JACUZZI_CLIMATE], "temperature": gecko_target,
+            })
+        elif math.isfinite(gecko_target):
+            _LOGGER.warning("Hoge/ongeldige oude Gecko-vraag %.1f niet automatisch hersteld", gecko_target)
         if saved.get("watercare") and saved["watercare"] not in (
             "unavailable",
             "unknown",
@@ -349,3 +401,4 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                     "option": saved["watercare"],
                 },
             )
+        self.hass.config_entries.async_update_entry(self._entry, options=options)

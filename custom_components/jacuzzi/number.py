@@ -6,6 +6,8 @@ update-listener reloadt de integratie zodat de nieuwe waarde geldt.
 
 from __future__ import annotations
 
+import math
+
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -163,6 +165,9 @@ class JacuzziOptionNumber(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Sla de waarde op in options; de update-listener reloadt."""
+        value = float(value)
+        if not math.isfinite(value) or not self._attr_native_min_value <= value <= self._attr_native_max_value:
+            raise ValueError("Optiewaarde buiten het toegestane bereik")
         options = dict(self._entry.options)
-        options[self._key] = float(value)
+        options[self._key] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)

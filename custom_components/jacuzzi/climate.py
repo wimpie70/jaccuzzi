@@ -6,10 +6,10 @@ het setpoint naar de vloer (compressor-rem) of herstelt het doel.
 
 - `temperature`         = gewenste kuip-temp (controller._heat_setpoint)
 - `current_temperature` = de bron die de controller leidend vindt
-                          (kuip in rust, gecorrigeerde inlaat bij stoken)
-- `hvac_mode` off       = warmtevraag uit; de Poolex blijft op 'heat'
-                          (telemetrie + vorstbeveiliging) — wij zetten
-                          de unit nooit uit.
+                          (alleen geldige kuipmeting; nooit de inlaat)
+- `hvac_mode` off       = warmtevraag uit; normaal Poolex op 'heat'
+                          met laag setpoint voor standby. Ook bij een niet
+                          bevestigde stop blijft de rem 15 °C, NOOIT Poolex off.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import DOMAIN
+from .const import DOMAIN, MAX_TUB_C
 
 ATTR_SOURCE = "demand_bron"  # welke sensor leidend was (kuip/inlaat)
 ATTR_SUPPRESSED = "rem_actief"  # rem-reden of 'uit'
@@ -56,18 +56,11 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_min_temp = 20.0
-    _attr_max_temp = 42.0
+    _attr_max_temp = MAX_TUB_C
 
     @property
     def target_temperature_step(self) -> float:
-        """Volg de actuator: als de Poolex alleen hele graden kent
-        heeft een 0.5-stap geen zin — het device rondt dan af en de
-        adoptie trekt ons doel terug naar wat het device rapporteert."""
-        poolex = self.hass.states.get(self._controller.conf["poolex_climate"])
-        if poolex is not None:
-            step = poolex.attributes.get("target_temp_step")
-            if isinstance(step, (int, float)) and step > 0:
-                return float(step)
+        """Kuip-doel is onafhankelijk van de actuator en diens afronding."""
         return 0.5
 
     def __init__(self, entry: JacuzziConfigEntry) -> None:
@@ -87,14 +80,17 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
         # Doel + hvac-mode overleven een restart: anders valt alles
         # terug op de config-default (38 °C, vraag aan).
         if (last := await self.async_get_last_state()) is not None:
-            if (
-                last.state not in ("unknown", "unavailable")
-                and (t := last.attributes.get("temperature")) is not None
-            ):
-                self._controller.async_set_target(float(t))
-            self._controller.async_set_heating_enabled(
-                last.state != "off"
-            )
+            # De geleerde K blijft diagnostiek, maar mag niet bij elke
+            # options-wijziging of onderhoudsreload verloren gaan.
+            self._controller.async_restore_retour_offset(last.attributes.get(ATTR_RETOUR))
+            enabled = last.state == "heat"
+            try:
+                # Oude installs konden doelen >40 opslaan. Ongeldig herstel
+                # mag startup niet laten mislukken met de actuator nog hoog.
+                self._controller.async_set_target(float(last.attributes["temperature"]))
+            except (ValueError, TypeError, KeyError):
+                enabled = False
+            self._controller.async_set_heating_enabled(enabled)
 
     @callback
     def _async_update(self) -> None:
@@ -141,8 +137,7 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
         }
 
     async def async_set_temperature(self, **kwargs) -> None:
-        """Nieuw kuip-doel vanuit de kaart — gesnapt op de stap die
-        de Poolex echt kan opslaan."""
+        """Nieuw kuip-doel, in halve graden; actuator-echo verandert dit nooit."""
         if (temp := kwargs.get("temperature")) is not None:
             step = self.target_temperature_step
             self._controller.async_set_target(

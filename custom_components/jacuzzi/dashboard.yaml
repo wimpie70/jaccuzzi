@@ -125,7 +125,7 @@ views:
       title: Poolex — warmtepomp
       entities:
       - entity: switch.jacuzzi_poolex_power
-        name: Aan/uit
+        name: Warmte toestaan
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag
       - entity: binary_sensor.jacuzzi_compressor_active

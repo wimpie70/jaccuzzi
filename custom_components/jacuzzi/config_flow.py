@@ -47,6 +47,7 @@ from .const import (
     DEFAULT_WATERCARE_PEAK,
     DEFAULT_WATERCARE_SELECT,
     DOMAIN,
+    MAX_TUB_C,
 )
 
 ENTITY_SELECTORS = {
@@ -107,25 +108,20 @@ def _schema(current: dict | None = None) -> vol.Schema:
         selector.NumberSelectorConfig(min=0.1, max=5.0, step=0.1, unit_of_measurement="°C")
     )
     data[vol.Required(
-        CONF_PEAK_MODE, default=current.get(CONF_PEAK_MODE, DEFAULT_PEAK_MODE)
+        CONF_PEAK_MODE, default=DEFAULT_PEAK_MODE
     )] = selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
                 selector.SelectOptionDict(value="setpoint", label="Laag setpoint (blijft aan)"),
-                selector.SelectOptionDict(value="off", label="Helemaal uit (hvac_mode off)"),
             ],
             mode=selector.SelectSelectorMode.DROPDOWN,
         )
     )
-    data[vol.Required(
-        CONF_PEAK_SETPOINT, default=current.get(CONF_PEAK_SETPOINT, DEFAULT_PEAK_SETPOINT)
-    )] = selector.NumberSelector(
-        selector.NumberSelectorConfig(min=4.0, max=20.0, step=0.5, unit_of_measurement="°C")
-    )
+    # Piek-rem staat vast op 15 °C; geen off-keuze of instelbaar stookdoel.
     data[vol.Required(
         CONF_NORMAL_SETPOINT, default=current.get(CONF_NORMAL_SETPOINT, DEFAULT_NORMAL_SETPOINT)
     )] = selector.NumberSelector(
-        selector.NumberSelectorConfig(min=20.0, max=42.0, step=0.5, unit_of_measurement="°C")
+        selector.NumberSelectorConfig(min=20.0, max=MAX_TUB_C, step=0.5, unit_of_measurement="°C")
     )
     data[vol.Required(
         CONF_POOLEX_ALWAYS_ON,
