@@ -900,7 +900,11 @@ class JacuzziController:
         # (bulk + per-pass ΔT ~5 K): dan is de marge ruimer, anders
         # tript de bewaker op gezond retour-water. In rust blijft
         # +OVERHEAT_MARGIN_K de harde grens.
-        guard_margin = OVERHEAT_MARGIN_K + (
+        # Overshoot telt mee: de run stopt bewust pas bij doel+overshoot
+        # (bulk ~39 bij doel 38) — de buis leest dan ~doel+overshoot+ΔT;
+        # zonder deze term zou de bewaker precies op de normale
+        # eindstand trippen.
+        guard_margin = overshoot + OVERHEAT_MARGIN_K + (
             self._retour_offset if comp_idle < COMP_IDLE_TRUST_S else 0.0
         )
         overheated = tub_valid and tub_temp > setpoint + guard_margin
