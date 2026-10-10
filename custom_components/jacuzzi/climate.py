@@ -31,7 +31,8 @@ from .controller import SIGNAL_UPDATE
 from .const import DOMAIN
 
 ATTR_SOURCE = "demand_bron"  # welke sensor leidend was (kuip/inlaat)
-ATTR_SUPPRESSED = "rem_actief"  # setpoint-onderdrukking (anti-pendel)
+ATTR_SUPPRESSED = "rem_actief"  # rem-reden of 'uit'
+ATTR_STATUS = "regelstatus"  # een leesbare regeltoestand
 ATTR_RETOUR = "retour_marge"  # geleerde kuip-retour offset (K)
 
 
@@ -134,9 +135,8 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
         """Welke bron de huidige temperatuur levert + rem-status."""
         return {
             ATTR_SOURCE: self._controller.demand_bron,
-            ATTR_SUPPRESSED: (
-                "aan" if self._controller.demand_suppressed else "uit"
-            ),
+            ATTR_SUPPRESSED: self._controller.rem_reden,
+            ATTR_STATUS: self._controller.regelstatus,
             ATTR_RETOUR: round(self._controller.retour_offset, 1),
         }
 

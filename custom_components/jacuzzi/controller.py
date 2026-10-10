@@ -150,6 +150,7 @@ class JacuzziController:
             conf.get(CONF_NORMAL_SETPOINT, DEFAULT_NORMAL_SETPOINT)
         )
         self._demand_suppressed = False  # wij hebben setpoint laag gezet
+        self._suppress_reason = ""       # waarom: oververhitting/hvac-uit/anti-pendel
         self._suppress_at = 0.0          # monotonic ts laatste wissel
         self._sp_write_at = 0.0          # monotonic ts laatste sp-write
         self._afterheat_hold = False     # pomp vastgehouden voor nakoeling
@@ -185,6 +186,28 @@ class JacuzziController:
     def retour_offset(self) -> float:
         """Geleerde kuip-retour offset (EMA per meng-check)."""
         return self._retour_offset
+
+    @property
+    def rem_reden(self) -> str:
+        """Waarom het setpoint laag staat ('uit' als er geen rem is)."""
+        if self._peak_active:
+            return "piekblokkade"
+        if self._demand_suppressed:
+            return self._suppress_reason or "anti-pendel"
+        return "uit"
+
+    @property
+    def regelstatus(self) -> str:
+        """Eén leesbare regeltoestand voor het dashboard."""
+        if self._peak_active:
+            return "piekblokkade"
+        if self._verify_until and time.monotonic() < self._verify_until:
+            return "meng-check"
+        if self._demand_suppressed:
+            return f"rem ({self.rem_reden})"
+        if self.warmtevraag:
+            return f"vraag ({self.demand_bron})"
+        return "idle"
 
     # --- helpers -----------------------------------------------------
 
@@ -757,6 +780,7 @@ class JacuzziController:
                     live_sp,
                 )
                 self._demand_suppressed = False
+                self._suppress_reason = ""
             # Adoptie wel na de write-grace gate: vlak na onze eigen
             # write kan de live attr nog de oude waarde teruglezen
             # (trage tuya-sync) of een door het device afgeronde
@@ -777,6 +801,7 @@ class JacuzziController:
             # bv. restart tijdens onderdrukking: vlag herstellen zodat
             # een nieuwe vraag het setpoint weer omhoog kan zetten.
             self._demand_suppressed = True
+            self._suppress_reason = self._suppress_reason or "anti-pendel"
         setpoint = self._heat_setpoint
         tub_temp = _attr_float(jacuzzi, "current_temperature")
         compressor_on = _float(compressor) > 0
@@ -937,6 +962,7 @@ class JacuzziController:
                 )
             ):
                 self._demand_suppressed = False
+                self._suppress_reason = ""
                 self._suppress_at = time.monotonic()
                 self._sp_write_at = time.monotonic()
                 if self._verify_pending:
@@ -995,6 +1021,11 @@ class JacuzziController:
                 POOLEX_SETPOINT_FLOOR,
             )
             self._demand_suppressed = True
+            self._suppress_reason = (
+                "oververhitting" if overheated
+                else "hvac-uit" if not self.heating_enabled
+                else "anti-pendel"
+            )
             self._suppress_at = time.monotonic()
             self._sp_write_at = time.monotonic()
             if (
