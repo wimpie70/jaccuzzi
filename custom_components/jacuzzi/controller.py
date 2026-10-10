@@ -1138,10 +1138,13 @@ class JacuzziController:
         else:
             self._notify_once("failsafe", False, "", "")
 
-        # Pomp AAN bij warmtevraag (onmiddellijk, zoals template-trigger)
+        # Pomp AAN bij warmtevraag (onmiddellijk, zoals template-trigger).
+        # Niet tijdens piek: de compressor mag dan toch niet, circulatie
+        # heeft geen functie en zou anders de hele blokperiode draaien.
         if (
             self.warmtevraag
             and not pump_on
+            and not in_peak
             and not self._flow_lockout
             and self._pump_cmd_ready()
         ):
@@ -1170,6 +1173,13 @@ class JacuzziController:
                 "comp_idle",
                 not compressor_on and self._compressor_recently_on,
                 PUMP_RUNON_S,
+            )
+            # Piekblokkade: geen vraag-circulatie — de compressor mag
+            # toch niet. Een net gestopte run blijft via outlet_hot
+            # nakoelen; handmatige circulatie laten we met rust
+            # (off vereist pump_by_us).
+            or self._since_true(
+                "peak_block", in_peak and not compressor_on, PUMP_RUNON_S
             )
         )
         # Nakoeling: compressor uit maar de wisselaar is nog heet ->
@@ -1201,7 +1211,9 @@ class JacuzziController:
         ):
             _LOGGER.info(
                 "Setpoint bereikt / geen vraag — pomp uit%s",
-                " (na nakoeling uitlaat)" if self._afterheat_hold else "",
+                " (piekblokkade)" if in_peak
+                else " (na nakoeling uitlaat)" if self._afterheat_hold
+                else "",
             )
             await self._async_call(
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
@@ -1293,15 +1305,18 @@ class JacuzziController:
         )
 
         # Monitor 2: warmtevraag zonder compressor = flow-error proxy.
-        # Niet tijdens demand-onderdrukking: dan is de compressor
-        # bewust stil (setpoint op de vloer / dwell-tijd loopt).
+        # Niet tijdens demand-onderdrukking, piekblokkade of
+        # flow-lockout: dan is de compressor bewust stil.
         self._notify_once(
             "no_compressor",
             self._since_true(
                 "no_compressor",
                 self.warmtevraag
                 and not compressor_on
-                and not self._demand_suppressed,
+                and not self._demand_suppressed
+                and not in_peak
+                and not self._peak_active
+                and not self._flow_lockout,
                 NO_COMPRESSOR_S,
             ),
             "Jacuzzi: Poolex mogelijk in storing",
