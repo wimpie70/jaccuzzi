@@ -47,7 +47,6 @@ views:
         teruggezet. Let op: de Gecko-pack doet zelf flow-checks — bij een lege kuip
         moet de groep uit in de meterkast.'
   - type: grid
-    column_span: 3
     title: Regeling
     cards:
     - type: thermostat
