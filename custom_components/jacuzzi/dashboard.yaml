@@ -10,8 +10,8 @@ views:
     column_span: 3
     cards:
     - type: markdown
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Hoe de regeling werkt
       content: '**Warmtevraag** ontstaat onder doel − 1 °C; een lopende run
         stookt door tot het doel zelf. HA zet dan de circulatiepomp aan; de
@@ -51,13 +51,13 @@ views:
     title: Regeling
     cards:
     - type: thermostat
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       entity: climate.jacuzzi_tub_target
       name: Kuip-doel (onze thermostaat)
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       show_header_toggle: false
       entities:
       - entity: switch.jacuzzi_maintenance
@@ -75,18 +75,18 @@ views:
       - entity: number.jacuzzi_heat_overshoot_above_target
         name: Doorstook (stop boven doel)
     - type: thermostat
-      layout_options:
-        grid_columns: 6
+      grid_options:
+        columns: 6
       entity: climate.jaccuzzi_thermostat_1
       name: Kuip (Gecko)
     - type: thermostat
-      layout_options:
-        grid_columns: 6
+      grid_options:
+        columns: 6
       entity: climate.pool_heat_pump
       name: Poolex (actuator)
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Gecko — kuip
       show_header_toggle: false
       entities:
@@ -106,8 +106,8 @@ views:
     title: Status
     cards:
     - type: glance
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Gecko — circulatie
       entities:
       - entity: fan.jaccuzzi_waterfall
@@ -119,8 +119,8 @@ views:
       - entity: fan.jaccuzzi_pump_2
         name: Mengen 2
     - type: glance
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Poolex — warmtepomp
       entities:
       - entity: switch.jacuzzi_poolex_power
@@ -134,8 +134,8 @@ views:
       - entity: binary_sensor.pool_heat_pump_problem
         name: Fault
     - type: history-graph
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Temperaturen (24 uur)
       hours_to_show: 24
       entities:
@@ -154,8 +154,8 @@ views:
       - entity: sensor.pool_heat_pump_temperature_2
         name: Buiten
     - type: history-graph
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Aan/uit (24 uur)
       hours_to_show: 24
       entities:
@@ -185,8 +185,8 @@ views:
     title: Instellingen
     cards:
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Piekblokkade
       entities:
       - entity: time.jacuzzi_peak_start
@@ -198,8 +198,8 @@ views:
       - entity: select.jaccuzzi_watercare_mode
         name: Watercare (piek = Super Savings)
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Meng-puls
       show_header_toggle: false
       entities:
@@ -210,8 +210,8 @@ views:
       - entity: number.jacuzzi_mixing_pulse_duration
         name: Pulsduur
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Poolex — sturing
       show_header_toggle: false
       entities:
@@ -232,8 +232,8 @@ views:
       - entity: switch.jacuzzi_poolex_always_on
         name: Altijd aan (vorstbeveiliging)
     - type: entities
-      layout_options:
-        grid_columns: 12
+      grid_options:
+        columns: 12
       title: Verbruik
       show_header_toggle: false
       entities:
