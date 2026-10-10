@@ -61,11 +61,19 @@ DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
 DEFAULT_POOLEX_MAX_W = 1600       # W bij duty 100% — kalibreer met meter
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
-# Inlaat-compensatie: DP16 zit thermisch gekoppeld aan de buitenlucht
-# (stilstaand water zakt hij naar ambient — waargenomen 18 °C bij 30 °C
-# water). De meetfout is dus geen vaste offset maar ~k × (water-buiten);
-# gemeten uit recorder-data: k ≈ 0.14. demand_temp = inlaat + k ×
-# (inlaat - buiten). Kalibreerbaar via een number-entity.
+# !!! MEETFAIT — niet opnieuw bediscussiëren !!!
+# Recorder-analyse okt 2026 (hassdb_export + jacuzzi_history.csv):
+# de KUIP (Gecko-sensor) is de echte bulk-temperatuur — altijd, ook
+# tijdens stoken. Bewijs: na compressor-stop met circulatie bleef de
+# kuip-lezing ~44 °C staan (30+ min, geen retour-afval); in rust+flow
+# schelen kuip en uitlaat ~0.5 K.
+# De Poolex-INLAAT (DP16) leest ALTIJD te laag: pocket thermisch
+# gekoppeld aan buitenlucht, fout ~k×(inlaat−buiten) met k ≈ 0.35–0.45.
+# Bij amb 13 °C las hij 35 terwijl de bulk ~44.5 was (−9.5 K!). De
+# "per-pass ΔT ~5-8 K" (uit−in) was een artefact van diezelfde
+# inlaat-fout; de echte ΔT is ~2 K. Daarom is de inlaat NOOIT de
+# vraag-bron — enkel fallback als de kuip-meting wegvalt. Deze
+# compensatie dient alleen die fallback (en display): k ≈ 0.35.
 DEFAULT_INLET_COMPENSATION_K = 0.35
 
 # Demand-remming via het Poolex-setpoint: de unit regelt zijn
@@ -76,11 +84,8 @@ DEFAULT_INLET_COMPENSATION_K = 0.35
 POOLEX_SETPOINT_FLOOR = 15.0   # tuya minimum in heat-mode
 SP_SUPPRESS_REST_S = 1800      # setpoint laag >=30 min (compressor-rust)
 SP_SUPPRESS_RUN_S = 900        # setpoint hoog >=15 min (min. stookrun)
-OVERHEAT_MARGIN_K = 1.0        # kuip > doel + dit -> meteen remmen
-SP_WRITE_GRACE_S = 90          # na onze eigen setpoint-write: live attr
-                               # kan nog de oude waarde (tuya-echo) of
-                               # een afgeronde waarde tonen -> niet
-                               # adopteren als gebruikersdoel
+OVERHEAT_MARGIN_K = 1.0        # kuip > doel + overshoot + dit ->
+                               # meteen remmen
 
 # Stop-meng-meet: bij einde warmtevraag tijdens een run schrijven we de
 # compressor-rem op basis van de (gecorrigeerde) inlaat — maar die
@@ -99,17 +104,13 @@ VERIFY_MAX_RESUMES = 2    # max hervattingen via meng-check per sessie
 RETOUR_GUARD_MIN_K = 2.0
 RETOUR_GUARD_MAX_K = 9.0
 
-# Fase-afhankelijke vraag-bron. In rust (compressor al een poos uit)
-# is de Gecko-kuipmeting leidend: de inlaat (DP16) drijft dan naar
-# ambient door zijn slecht-gekoppelde pocket (>10 min convergentie,
-# 's nachts volledig richting buitentemp). Tijdens/kort na stoken is
-# de kuipmeting juist NIET bruikbaar als vraag-bron: de Gecko-buis
-# leest retour-water = bulk + per-pass ΔT (~5 K bij duty ~70).
-COMP_IDLE_TRUST_S = 180        # compressor uit zo lang -> kuip leidend
-RETOUR_GUARD_K = 5.0           # extra oververhittings-marge tijdens
-                               # stoken: retour ≈ bulk + per-pass ΔT;
-                               # zonder deze ruimte tripte de bewaker
-                               # constant op gezond retour-water
+# COMP_IDLE_TRUST_S gold toen de inlaat nog vraag-bron was tijdens
+# stoken; nu is de kuip áltijd bron en de inlaat enkel fallback als
+# de kuip wegvalt — de window bepaalt hoelang de fallback na een
+# compressor-run nog als "vers" geldt.
+COMP_IDLE_TRUST_S = 180
+RETOUR_GUARD_K = 5.0           # startwaarde lerende retour-offset
+                               # (EMA per meng-check; zie controller)
 
 # Massagepompen voor de meng-puls (vaste Gecko-ids; staan niet in config)
 MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")

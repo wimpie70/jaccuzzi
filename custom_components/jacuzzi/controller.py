@@ -84,7 +84,6 @@ from .const import (
     SOLAR_SURPLUS_S,
     SP_SUPPRESS_REST_S,
     SP_SUPPRESS_RUN_S,
-    SP_WRITE_GRACE_S,
     TUB_WATER_KG,
     UNREACHABLE_S,
     VERIFY_MAX_RESUMES,
@@ -768,36 +767,27 @@ class JacuzziController:
         else:
             self._notify_once("poolex_autoon", False, "", "")
 
-        # Ons stookdoel is niet meer de live Poolex-attr: wij schrijven
-        # zelf de vloer (15 °C) weg als de vraag wegvalt. Daarom
-        # adopteren we alleen waardes boven de vloer als gebruikersdoel.
-        # Staat de attr hoog terwijl wij onderdrukken -> iemand anders
-        # (app/gebruiker/piek-herstel) heeft overgenomen -> loslaten.
-        # De 60 s-grace na onze eigen write voorkomt dat een trage
-        # tuya-attr-update als 'externe wijziging' terugleest.
+        # Het gebruikersdoel is UITSLUITEND climate.jacuzzi_tub_target
+        # (self._heat_setpoint). De live Poolex-attr wordt NOOIT als
+        # doel geadopteerd: vlak na onze eigen write leest tuya nog de
+        # oude waarde terug, en die zou dan het gebruikersdoel
+        # overschrijven (waargenomen: doel sprong 37 -> 38 terug).
+        # Alleen als de attr hoog staat TERWIJL wij onderdrukken heeft
+        # iemand anders overgenomen -> onderdrukking loslaten; onze
+        # volgende write zet ons setpoint dan alsnog terug.
         live_sp = _attr_float(poolex, "temperature", 0.0)
-        if live_sp > POOLEX_SETPOINT_FLOOR + 0.5:
-            if (
-                self._demand_suppressed
-                and time.monotonic() - self._suppress_at > 60
-            ):
-                _LOGGER.info(
-                    "Poolex-setpoint extern naar %.1f gezet — "
-                    "demand-onderdrukking losgelaten",
-                    live_sp,
-                )
-                self._demand_suppressed = False
-                self._suppress_reason = ""
-            # Adoptie wel na de write-grace gate: vlak na onze eigen
-            # write kan de live attr nog de oude waarde teruglezen
-            # (trage tuya-sync) of een door het device afgeronde
-            # waarde (bv. hele graden) — die is dan de waarheid van
-            # het device, maar niet meteen na onze write.
-            if (
-                not self._peak_active
-                and time.monotonic() - self._sp_write_at > SP_WRITE_GRACE_S
-            ):
-                self._heat_setpoint = live_sp
+        if (
+            live_sp > POOLEX_SETPOINT_FLOOR + 0.5
+            and self._demand_suppressed
+            and time.monotonic() - self._suppress_at > 60
+        ):
+            _LOGGER.info(
+                "Poolex-setpoint extern naar %.1f gezet — "
+                "demand-onderdrukking losgelaten",
+                live_sp,
+            )
+            self._demand_suppressed = False
+            self._suppress_reason = ""
         elif (
             not self._demand_suppressed
             and not self._peak_active
