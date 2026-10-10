@@ -836,6 +836,8 @@ class JacuzziController:
         #   aan de buitenlucht; meetfout is geen vaste offset maar
         #   ~k × (inlaat - buiten), k ≈ 0.14 uit recorder-data.
         #   Kalibreerbaar via number 'Inlaat sensorcompensatie'.
+        #   Vangrail: bulk wordt ÓÓK geschat als kuip − ΔT (uit−in);
+        #   de hoogste schatting wint -> bij twijfel stopt hij eerder.
         inlet_temp = _attr_float(poolex, "current_temperature")
         inlet_valid = poolex.state not in ("unavailable", "unknown") and (
             1.0 <= inlet_temp <= 45.0
@@ -855,6 +857,22 @@ class JacuzziController:
             )
             demand_temp = inlet_temp + comp
             demand_valid, bron = True, f"inlaat+{comp:.1f}"
+            # Dubbele bulk-schatting: de Gecko-buis leest retour-water
+            # = bulk + per-pass ΔT (uit−in gemeten). kuip−ΔT is dus óók
+            # ~bulk. De HOOGSTE van de twee schattingen is leidend —
+            # stopt de run eerder wanneer de inlaat-compensatie te laag
+            # zit; de meng-check verifieert daarna toch de echte bulk.
+            out_st = self.hass.states.get(POOLEX_OUTLET_SENSOR)
+            if (
+                tub_valid
+                and out_st is not None
+                and out_st.state not in ("unavailable", "unknown")
+            ):
+                dt = _float(out_st, inlet_temp) - inlet_temp
+                if 0.0 <= dt <= 8.0:
+                    est = tub_temp - dt
+                    if est > demand_temp:
+                        demand_temp, bron = est, f"kuip−{dt:.1f}"
         else:
             # kuip — leidend in rust; tijdens stoken zonder geldige
             # inlaat is dit een te hoge meting (retour) -> stopt de
