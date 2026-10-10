@@ -75,6 +75,9 @@ views:
       - entity: climate.jacuzzi_tub_target
         attribute: demand_bron
         name: Meetbron vraag
+      - entity: climate.jacuzzi_tub_target
+        attribute: retour_marge
+        name: Retour-marge (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
     - type: thermostat

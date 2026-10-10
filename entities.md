@@ -149,17 +149,19 @@ schrijven werken.
     bij compressor-uit + circulatie aangedreven voor >10 min.
   - Poolex "Mode 1" pompt zelf periodiek om de watertemp te refreshen
     (DP110 = sampling interval, range 30–90 min)
-- **Meng-check na elke vraag-stop**: de kuip stratificeert tijdens
-  stoken (08/10: kuip 44.5 vs inlaat 35 = ~9.5 K top-bodem gap).
-  Daarom stopt de run bij de gecorrigeerde-inlaat-drempel, circuleert
-  + jettet de kuip dan 6 min (`VERIFY_MIX_S`), en evalueert pas dán
-  de gemengde bulk: nog vraag -> hervat (max 2x, `VERIFY_MAX_RESUMES`),
-  op temp -> klaar. `demand_bron` toont `meng-check` in dat venster.
+- **Meng-check na elke vraag-stop**: de inlaat leest structureel
+  te laag (pocket + ambient, 08/10: inlaat 35 vs kuip 44.5 = ~9.5 K —
+  dat was vooral sensor-fout, géén echte stratificatie; eerste echte
+  top-vs-bulk meting 10/10: slechts 0.5 K). Daarom stopt de run bij
+  de gecorrigeerde-inlaat-drempel, circuleert + jettet de kuip dan
+  6 min (`VERIFY_MIX_S`), en evalueert pas dán de gemengde bulk: nog
+  vraag -> hervat (max 2x, `VERIFY_MAX_RESUMES`), op temp -> klaar.
+  `demand_bron` toont `meng-check` in dat venster.
 - **Lerende retour-marge**: bij elke meng-check meet de controller
-  `t = kuip_bij_stop − kuip_na_mengen` = de echte stratificatie-offset
-  van die run. Die vervangt de vaste bewakings-marge (EMA, 0.3-gewicht,
-  geclamped 2–9 K = `RETOUR_GUARD_MIN/MAX_K`). Zichtbaar als attribuut
-  `retour_marge` op `climate.jacuzzi_tub_target`.
+  `t = kuip_bij_stop − kuip_na_mengen` = de echte top-vs-bulk offset
+  van die run (klein: ~0.5 K). Die vervangt de vaste bewakings-marge
+  (EMA, 0.3-gewicht, geclamped 2–9 K = `RETOUR_GUARD_MIN/MAX_K`).
+  Zichtbaar als attribuut `retour_marge` op `climate.jacuzzi_tub_target`.
 - **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
   naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.
   De controller houdt de circulatiepomp daarom aan zolang de uitlaat

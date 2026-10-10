@@ -77,11 +77,12 @@ SP_WRITE_GRACE_S = 90          # na onze eigen setpoint-write: live attr
                                # adopteren als gebruikersdoel
 
 # Stop-meng-meet: bij einde warmtevraag tijdens een run schrijven we de
-# compressor-rem, maar de kuip is dan gestratificeerd (top ~5-9 K heter
-# dan de aanzuig-bodemlaag — gemeten 08/10). Eerst een paar minuten
-# circuleren + jets mengen, dan pas de ECHTE bulk evalueren: nog
-# vraag -> run hervatten (geen pendel: bulk klopt dan echt niet), geen
-# vraag -> definitief klaar.
+# compressor-rem op basis van de (gecorrigeerde) inlaat — maar die
+# leest systematisch te laag (pocket + ambient, ~5-9 K fout waargenomen
+# 08/10; echte stratificatie blijkt klein: ~0.5 K gemeten 10/10). Eerst
+# een paar minuten circuleren + jets mengen, dan pas de ECHTE bulk
+# evalueren: nog vraag -> run hervatten (geen pendel: bulk klopt dan
+# echt niet), geen vraag -> definitief klaar.
 VERIFY_MIX_S = 360        # circulatie+meng-duur na een vraag-stop —
                           # ook >= de ~3-5 min compressor-egaliseertijd
 VERIFY_MAX_RESUMES = 2    # max hervattingen via meng-check per sessie
