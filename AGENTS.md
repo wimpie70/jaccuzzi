@@ -13,6 +13,8 @@
   keep appropriate circulation, retry and alarm if the stop is not confirmed.
 - Startup/reload rest is 30 seconds, distinct from normal 30-minute restart
   dwell after a heating run. Stop confirmation remains mandatory.
+  A low actuator target alone is not anti-cycling: show startup wait separately,
+  true restart dwell only when demand is waiting, and idle when no heat is needed.
 - Maintenance keeps both actuator targets low (Poolex 15 °C, Gecko minimum),
   stops massage pumps and stops circulation after confirmed compressor idle.
   On exit restore saved Watercare and a valid low Gecko setting (<=18 °C),
@@ -23,6 +25,15 @@
 - Restore confirmed-off circulation when needed for heating, mixing or cooling,
   except during maintenance/flow lockout. Urgent recovery uses a 5-second
   command retry limit rather than the ordinary 30-second debounce.
+  Retain pump ownership after failed/unconfirmed stop requests; release it
+  only when pump-off is reported and circulation is no longer needed.
+- The generic Poolex problem bit can briefly indicate d1 during circulation
+  startup. Allow a single 120-second window only for an otherwise valid new
+  start; pump-on must be confirmed before raising the actuator target. Retries
+  must not renew that window. Persistent/mid-run faults and all sensor,
+  temperature, peak, maintenance and lockout protections still take priority.
+- Notification delivery must handle missing/failed notify services, falling
+  back to a registered persistent_notification service without unhandled tasks.
 - Run offline safety regressions with:
   `python3 -m unittest discover -s tools -p 'test_*.py'`
   These execute controller/lifecycle code against HA/service doubles; they do

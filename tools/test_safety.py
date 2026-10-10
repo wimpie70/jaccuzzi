@@ -79,7 +79,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         })
         hass = SimpleNamespace(
             states=self.states,
-            services=SimpleNamespace(async_call=self.service),
+            services=SimpleNamespace(async_call=self.service, has_service=lambda domain, service: domain in ("notify", "persistent_notification")),
             async_create_task=self.create_task,
         )
         conf = {
@@ -921,6 +921,317 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
             await controller._async_evaluate()
             self.assertFalse(controller.warmtevraag)
         self.assertIn(15, self.temperatures())
+
+    async def test_relative_warmth_is_not_reported_as_overheating(self):
+        self.c.async_set_target(36)
+        self.c.conf["overshoot"] = 0.5
+        self.tub(37.5)
+        alarms = []
+        self.c._notify_once = lambda *args: alarms.append(args)
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "rem (te warm)")
+        self.assertIn(15, self.temperatures())
+        self.assertFalse(self.c.warmtevraag)
+        self.assertTrue(any(a[0] == "too_warm" and a[1] for a in alarms))
+        self.assertFalse(any(a[0] == "overheat" and a[1] for a in alarms))
+
+    async def test_absolute_overheating_is_still_reported_at_40(self):
+        self.tub(39.5)
+        alarms = []
+        self.c._notify_once = lambda *args: alarms.append(args)
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "rem (te warm)")
+        alarms.clear()
+        self.tub(40)
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "rem (oververhitting)")
+        self.assertTrue(any(a[0] == "overheat" and a[1] for a in alarms))
+        self.assertFalse(any(a[0] == "too_warm" and a[1] for a in alarms))
+        self.assertFalse(self.c.warmtevraag)
+
+    async def test_old_finished_run_without_demand_is_idle_not_anti_cycling(self):
+        self.tub(37.5)
+        self.c._demand_suppressed = True
+        self.c._suppress_reason = "anti-pendel"
+        self.c._rest_s = 1800
+        self.c._suppress_at = self.clock.value - 10800
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertEqual(self.c.regelstatus, "idle (geen warmtevraag)")
+        self.assertEqual(self.c.rem_reden, "geen warmtevraag")
+
+    async def test_startup_status_changes_to_idle_when_30_seconds_elapsed(self):
+        self.tub(37.5)
+        self.c._demand_suppressed = True
+        self.c._rest_s = 30
+        self.c._suppress_at = self.clock.value
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "opstart (wacht 30 s)")
+        self.clock.value += 30
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "idle (geen warmtevraag)")
+
+    async def test_real_restart_dwell_with_demand_shows_remaining_minutes(self):
+        self.c._demand_suppressed = True
+        self.c._suppress_reason = "anti-pendel"
+        self.c._rest_s = 1800
+        self.c._suppress_at = self.clock.value - 1200
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.warmtevraag)
+        self.assertEqual(self.c.regelstatus, "rem (anti-pendel, 10 min)")
+        self.assertEqual(self.c.restart_wait_seconds, 600)
+        self.assertNotIn(37, self.temperatures())
+
+    async def test_pending_stop_confirmation_not_mislabelled_as_startup_dwell(self):
+        self.tub(37.5)
+        self.c._demand_suppressed = True
+        self.c._suppress_reason = "anti-pendel"
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "wacht op stopbevestiging")
+        self.assertIn(15, self.temperatures())
+
+    async def test_released_peak_with_warm_tub_is_idle_not_startup(self):
+        self.tub(37.5)
+        self.c._in_peak_window = lambda: True
+        self.c._early_restored = True
+        self.c._peak_active = False
+        self.c._demand_suppressed = True
+        self.c._suppress_reason = "piek-einde"
+        self.c._rest_s = 1800
+        self.c._suppress_at = self.clock.value - 10800
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "idle (geen warmtevraag)")
+        self.assertEqual(self.c.restart_wait_seconds, 0)
+        self.assertNotIn(37, self.temperatures())
+
+    async def test_startup_d1_allows_circulation_then_heat_without_restart_dwell(self):
+        self.states["pump"].state = "off"
+        self.states["compressor"].state = "0"
+        self.states["problem"].state = "on"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.c._demand_suppressed = True
+        old_suppress_at = self.c._suppress_at
+        await self.c._async_evaluate()
+        self.assertTrue(any(s == "turn_on" and d["entity_id"] == "pump" for _, s, d in self.calls))
+        self.assertNotIn(37, self.temperatures())
+        self.states["pump"].state = "on"
+        self.clock.value += 1
+        await self.c._async_evaluate()
+        self.assertIn(37, self.temperatures())
+        self.assertTrue(self.c.warmtevraag)
+        self.assertTrue(self.c._run_active)
+        self.assertEqual(self.c._suppress_at, old_suppress_at)
+        self.assertEqual(self.c.regelstatus, "aanloop (flow controleren)")
+        self.states["problem"].state = "off"
+        self.states["compressor"].state = "40"
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.regelstatus, "vraag tot kuip ≥ 38 °C")
+
+    async def test_missing_notify_service_cannot_leave_unhandled_task(self):
+        original = self.c.hass.services.async_call
+        async def service(domain, name, data, **kwargs):
+            if domain == "notify":
+                raise RuntimeError("notify.notify not found")
+            return await original(domain, name, data, **kwargs)
+        self.c.hass.services.async_call = service
+        self.c.hass.services.has_service = lambda domain, name: domain == "persistent_notification"
+        self.c._notify_once = type(self.c)._notify_once.__get__(self.c)
+        self.c._notify_once("test_alarm", True, "Test", "Message")
+        await asyncio.gather(*self.tasks)
+        self.assertTrue(any(d == "persistent_notification" and s == "create" for d, s, data in self.calls))
+
+    async def test_persistent_startup_fault_stops_after_120_seconds(self):
+        self.states["compressor"].state = "0"
+        self.states["problem"].state = "on"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.c._demand_suppressed = True
+        await self.c._async_evaluate()
+        self.assertIn(37, self.temperatures())
+        self.assertTrue(self.c.warmtevraag)
+        self.clock.value += 120
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertEqual(self.c.regelstatus, "rem (flow-storing)")
+        self.assertEqual(self.states["poolex"].attributes["temperature"], 15)
+        self.clock.value += 30
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertEqual(self.c.flow_start_seconds, 0)
+
+    async def test_pump_retries_cannot_renew_flow_start_window(self):
+        self.states["pump"].state = "off"
+        self.states["compressor"].state = "0"
+        self.states["problem"].state = "on"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.c._demand_suppressed = True
+        await self.c._async_evaluate()
+        deadline = self.c._flow_start_until
+        for _ in range(4):
+            self.clock.value += 30
+            await self.c._async_evaluate()
+            self.assertEqual(self.c._flow_start_until, deadline)
+        self.assertFalse(self.c.warmtevraag)
+        self.assertNotIn(37, self.temperatures())
+
+    async def test_new_fault_during_established_run_is_not_ignored(self):
+        self.c._run_active = True
+        self.states["problem"].state = "on"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertIn(15, self.temperatures())
+        self.assertEqual(self.c.flow_start_seconds, 0)
+
+    async def test_temperature_stop_and_invalid_sensor_override_flow_grace(self):
+        for temp, state in [(38, "heat"), (40, "heat"), (36, "unavailable")]:
+            with self.subTest(temp=temp, state=state):
+                self.setUp()
+                self.c._flow_start_until = self.clock.value + 120
+                self.c._flow_start_attempted = True
+                self.states["problem"].state = "on"
+                self.tub(temp, state=state)
+                await self.c._async_evaluate()
+                self.assertFalse(self.c.warmtevraag)
+                self.assertIn(15, self.temperatures())
+
+    async def test_unknown_problem_state_cannot_use_startup_grace(self):
+        self.c._flow_start_until = self.clock.value + 120
+        self.c._flow_start_attempted = True
+        self.states["problem"].state = "unavailable"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertEqual(self.c.regelstatus, "rem (sensoruitval)")
+
+    async def test_flow_lockout_cannot_be_bypassed_by_startup_grace(self):
+        self.c._flow_start_until = self.clock.value + 120
+        self.c._flow_start_attempted = True
+        self.c._flow_lockout = True
+        self.states["problem"].state = "on"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertFalse(self.c._flow_problem_allowed(self.states["problem"]))
+
+    async def test_longstanding_flow_fault_cannot_get_a_new_startup_window(self):
+        self.states["compressor"].state = "0"
+        self.states["problem"].state = "on"
+        self.c._since["flow_fault"] = datetime.now(timezone.utc) - timedelta(minutes=6)
+        await self.c._async_evaluate()
+        self.assertNotIn(37, self.temperatures())
+        self.assertTrue(self.c._flow_lockout)
+
+    async def test_flow_grace_does_not_bypass_initial_restart_rest(self):
+        self.states["compressor"].state = "0"
+        self.states["problem"].state = "on"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.flow_start_seconds, 0)
+        self.assertNotIn(37, self.temperatures())
+        self.clock.value += 30
+        await self.c._async_evaluate()
+        self.assertIn(37, self.temperatures())
+
+    async def test_failed_notify_service_falls_back_without_affecting_control(self):
+        original = self.c.hass.services.async_call
+        async def service(domain, name, data, **kwargs):
+            if domain == "notify":
+                raise RuntimeError("simulated notify failure")
+            return await original(domain, name, data, **kwargs)
+        self.c.hass.services.async_call = service
+        await self.c._async_notify("test", "Test", "Message")
+        self.assertTrue(any(d == "persistent_notification" and s == "create" for d, s, data in self.calls))
+        self.assertEqual(self.c.heat_setpoint, 37)
+
+    async def test_missing_all_notification_services_is_only_logged(self):
+        self.c.hass.services.has_service = lambda *args: False
+        await self.c._async_notify("test", "Test", "Message")
+        self.assertFalse(self.calls)
+
+    async def test_failed_persistent_notification_cannot_raise_background_error(self):
+        async def service(*args, **kwargs):
+            raise RuntimeError("simulated persistent notification failure")
+        self.c.hass.services.async_call = service
+        self.c.hass.services.has_service = lambda domain, service: domain == "persistent_notification"
+        await self.c._async_notify("test", "Test", "Message")
+
+    async def test_cleared_fault_is_not_kept_as_stale_control_status(self):
+        self.c._demand_suppressed = True
+        self.c._suppress_reason = "flow-storing"
+        self.c._rest_s = 1800
+        self.c._suppress_at = self.clock.value - 100
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.states["problem"].state = "off"
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.warmtevraag)
+        self.assertEqual(self.c.regelstatus, "rem (anti-pendel, 29 min)")
+        self.assertNotIn(37, self.temperatures())
+
+    async def test_new_start_after_sensor_abort_gets_its_own_bounded_window(self):
+        self.c._run_active = True
+        self.c._flow_start_attempted = True
+        self.c._flow_start_until = self.clock.value + 120
+        self.tub(36, state="unavailable")
+        await self.c._async_evaluate()
+        self.assertEqual(self.c.flow_start_seconds, 0)
+        self.states["compressor"].state = "0"
+        self.tub(36)
+        await self.c._async_evaluate()
+        self.clock.value += 1800
+        self.states["problem"].state = "on"
+        await self.c._async_evaluate()
+        self.assertIn(37, self.temperatures())
+        self.assertEqual(self.c.flow_start_seconds, 120)
+
+    async def test_lowered_target_brakes_immediately_with_compressor_running_or_idle(self):
+        for duty in ("40", "0", "unavailable"):
+            with self.subTest(duty=duty):
+                self.setUp()
+                self.c._heat_setpoint = 38.5
+                self.c._run_active = True
+                self.c.pump_by_us = True
+                self.c._suppress_at = self.clock.value - 120
+                self.states["poolex"].attributes["temperature"] = 38.5
+                self.states["compressor"].state = duty
+                self.tub(37)
+                self.c.async_set_target(35)
+                await self.c._async_evaluate()
+                await asyncio.gather(*self.tasks)
+                self.assertIn(15, self.temperatures())
+                self.assertFalse(self.c.warmtevraag)
+                self.assertFalse(any(s == "turn_off" and d.get("entity_id") == "pump" for _, s, d in self.calls))
+
+    async def test_failed_or_unconfirmed_pump_off_keeps_ownership_for_retry(self):
+        self.states["compressor"].state = "0"
+        self.tub(38)
+        self.c.pump_by_us = True
+        self.c._since["temp_reached"] = datetime.now(timezone.utc) - timedelta(minutes=4)
+        self.c._since["compressor_stopped"] = datetime.now(timezone.utc) - timedelta(minutes=4)
+        original = self.c.hass.services.async_call
+        async def fail_stop(domain, service, data, **kwargs):
+            if domain == "fan" and service == "turn_off" and data["entity_id"] == "pump":
+                self.calls.append((domain, service, dict(data)))
+                raise RuntimeError("simulated pump stop refusal")
+            return await original(domain, service, data, **kwargs)
+        self.c.hass.services.async_call = fail_stop
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.pump_by_us)
+        self.clock.value += 30
+        self.c.hass.services.async_call = original
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.pump_by_us)
+        self.assertEqual(len([1 for _, s, d in self.calls if s == "turn_off" and d["entity_id"] == "pump"]), 2)
+        self.states["pump"].state = "off"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.pump_by_us)
 
     async def test_start_after_restore(self):
         tree = ast.parse((ROOT / "__init__.py").read_text())

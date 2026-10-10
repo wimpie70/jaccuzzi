@@ -128,6 +128,7 @@ MAINT_PUMP_RETRY_S = 300  # pack weigert turn_off tijdens eigen cyclus
 PROBLEM_DELAY_S = 120    # fault-bit aan voordat we melden — d1 mag
                          # eerst de kans krijgen bij hervatte flow te clearen
 FLOW_FAULT_OFF_S = 300   # pomp aan + fault zo lang -> pomp uit (drooglopen/lek)
+FLOW_START_GRACE_S = 120 # eenmalige d1/probleembit-aanloop bij een nieuwe start
 PUMP_CMD_DEBOUNCE_S = 30 # min. tijd tussen pomp-commando's (RF-flap -> geen storm)
 FAILSAFE_NOTIFY_MIN = 3      # pas melden bij de zoveelste pomp-dip
 FAILSAFE_NOTIFY_WINDOW_S = 3600  # ...binnen dit venster (Gecko toggelt vanzelf)

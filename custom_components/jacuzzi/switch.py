@@ -346,17 +346,12 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
         # check-cycli (pomp droog bij lege kuip!) — software kan die niet
         # blokkeren, dus de groep moet er echt uit.
         if conf.get(CONF_NOTIFY_SERVICE):
-            await self._call(
-                "notify",
-                conf[CONF_NOTIFY_SERVICE],
-                {
-                    "title": "Jacuzzi: onderhoudsmodus aan",
-                    "message": "Onderhoud gevraagd: Poolex 15 °C, Gecko-doel minimum, "
-                    "pompen uit zodra compressor-uit bevestigd is. Controleer de standen; "
-                    "de Gecko-pack kan zelf pompen starten "
-                    "(flow-checks). Bij een lege kuip: schakel de groep "
-                    "uit in de meterkast!",
-                },
+            await self._entry.runtime_data._async_notify(
+                "maintenance", "Jacuzzi: onderhoudsmodus aan",
+                "Onderhoud gevraagd: Poolex 15 °C, Gecko-doel minimum, "
+                "pompen uit zodra compressor-uit bevestigd is. Controleer de standen; "
+                "de Gecko-pack kan zelf pompen starten (flow-checks). "
+                "Bij een lege kuip: schakel de groep uit in de meterkast!",
             )
 
     async def async_turn_off(self, **kwargs) -> None:

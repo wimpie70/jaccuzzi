@@ -65,6 +65,7 @@ from .const import (
     FAILSAFE_NOTIFY_MIN,
     FAILSAFE_NOTIFY_WINDOW_S,
     FLOW_FAULT_OFF_S,
+    FLOW_START_GRACE_S,
     HEAT_LOSS_SAMPLES,
     MAINT_PUMP_GRACE_S,
     MAINT_PUMP_RETRY_S,
@@ -130,6 +131,7 @@ class JacuzziController:
         self.hass = hass
         self.conf = conf
         self.pump_by_us = False  # wij hebben de pomp aangezet
+        self._pump_off_pending = False
         self.warmtevraag = False  # warmte gevraagd (voor sensor)
         self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
         self._peak_saved_setpoint: float | None = None  # setpoint vóór de piek
@@ -143,6 +145,9 @@ class JacuzziController:
         self._peak_active = False  # piek-blok is toegepast
         self._early_restored = False  # PV-einde al gedaan dit venster
         self._flow_lockout = False  # flow-fault: geen auto-aanzet pomp
+        self._flow_start_until = 0.0
+        self._flow_start_attempted = False
+        self._flow_fault_due = False
         self._flow_saved_watercare: str | None = None  # watercare vóór Away
         self._pump_cmd_at = 0.0  # monotonic ts laatste pomp-commando
         self._maint_off_retry: dict[str, float] = {}  # backoff per pomp
@@ -219,27 +224,74 @@ class JacuzziController:
         if self._peak_active:
             return "piekblokkade"
         if self._demand_suppressed:
-            return self._suppress_reason or "anti-pendel"
+            reason = self._suppress_reason or "anti-pendel"
+            if reason not in ("anti-pendel", "piek-einde"):
+                return reason
+            if self._verify_until and time.monotonic() < self._verify_until:
+                return "meng-check"
+            if self._brake_since is not None:
+                return "stopbevestiging"
+            if self._rest_s == STARTUP_REST_S and self.restart_wait_seconds > 0:
+                return "opstart"
+            if not self.warmtevraag:
+                return "geen warmtevraag"
+            if self.restart_wait_seconds > 0:
+                return "anti-pendel"
+            return "wacht op vrijgave"
         return "uit"
+
+    @property
+    def restart_wait_seconds(self) -> int:
+        """Resterende herstarttijd; alleen diagnostiek, wijzigt geen timers."""
+        if not self._demand_suppressed or (
+            self._verify_pending and self._verify_resumes < VERIFY_MAX_RESUMES
+        ):
+            return 0
+        return max(0, math.ceil(self._rest_s - (time.monotonic() - self._suppress_at)))
 
     @property
     def regelstatus(self) -> str:
         """Eén leesbare regeltoestand voor het dashboard."""
         if self.conf.get(CONF_MAINTENANCE):
             return "onderhoud"
-        if self._brake_lockout or self._suppress_reason in (
-            "sensoruitval",
-            "oververhitting",
-            "flow-storing",
-            "ongeldige instellingen",
+        if self._brake_lockout or (
+            self._suppress_reason in (
+                "sensoruitval", "oververhitting", "te warm", "flow-storing", "ongeldige instellingen",
+            ) and not (
+                self._suppress_reason == "flow-storing"
+                and self._flow_problem_allowed(self._state("problem_sensor"))
+            )
         ):
             return f"rem ({self._suppress_reason})"
         if self._peak_active:
             return "piekblokkade"
+        problem = self._state("problem_sensor")
+        if problem is not None and problem.state == "on" and self._flow_problem_allowed(problem):
+            pump = self._state("pump_fan")
+            return "aanloop (flow controleren)" if pump is not None and pump.state == "on" else "aanloop (wacht op circulatie)"
         if self._verify_until and time.monotonic() < self._verify_until:
             return "meng-check"
         if self._demand_suppressed:
-            return f"rem ({self.rem_reden})"
+            # Laag actuator-setpoint is niet hetzelfde als een actieve
+            # anti-pendeltimer: zonder vraag is dit gewoon idle/standby.
+            reason = self.rem_reden
+            if reason == "opstart":
+                return f"opstart (wacht {self.restart_wait_seconds} s)"
+            if reason == "geen warmtevraag":
+                return "idle (geen warmtevraag)"
+            if reason == "stopbevestiging":
+                return "wacht op stopbevestiging"
+            if reason == "anti-pendel":
+                return f"rem (anti-pendel, {math.ceil(self.restart_wait_seconds / 60)} min)"
+            if reason == "wacht op vrijgave":
+                poolex = self._state("poolex_climate")
+                pump = self._state("pump_fan")
+                if poolex is not None and poolex.state == "off":
+                    return "wacht op Poolex standby"
+                if pump is not None and pump.state == "off":
+                    return "wacht op circulatie"
+                return reason
+            return f"rem ({reason})"
         if self.warmtevraag:
             # Exacte KUIP-stopgrens zichtbaar; geen afgeronde/inlaat-grens.
             return f"vraag tot kuip ≥ {self.stop_temperature:g} °C"
@@ -271,6 +323,26 @@ class JacuzziController:
         """Laag pack-doel; dit verandert NOOIT het eigen gebruikersdoel."""
         minimum = _attr_float(self._state("jacuzzi_climate"), "min_temp", GECKO_MAINT_TARGET_C)
         return minimum if math.isfinite(minimum) and 15 <= minimum <= 18 else GECKO_MAINT_TARGET_C
+
+    @property
+    def flow_start_seconds(self) -> int:
+        """Resterend opstartvenster; retry-commando's verlengen dit nooit."""
+        return max(0, math.ceil(self._flow_start_until - time.monotonic()))
+
+    def _arm_flow_start(self) -> None:
+        if not self._flow_start_attempted:
+            self._flow_start_attempted = True
+            self._flow_start_until = time.monotonic() + FLOW_START_GRACE_S
+
+    def _flow_problem_allowed(self, problem: State | None) -> bool:
+        """Alleen een begrensde opstartwaarschuwing, nooit onbekende/stale data."""
+        if not self._fresh(problem):
+            return False
+        if problem.state == "off":
+            return True
+        return problem.state == "on" and self.flow_start_seconds > 0 and not (
+            self._flow_lockout or self._brake_lockout or self._flow_fault_due
+        )
 
     def _option_float(self, key: str, default: float) -> float:
         """Ongeldige opgeslagen opties worden een veilige blokkade, geen crash."""
@@ -363,13 +435,34 @@ class JacuzziController:
         if key in self._notified:
             return
         self._notified.add(key)
-        service = self.conf[CONF_NOTIFY_SERVICE]
         _LOGGER.warning("%s: %s", title, message)
-        self.hass.async_create_task(
-            self.hass.services.async_call(
-                "notify", service, {"title": title, "message": message}
-            )
-        )
+        self.hass.async_create_task(self._async_notify(key, title, message))
+
+    async def _async_notify(self, key: str, title: str, message: str) -> None:
+        """Een ontbrekende notifier mag geen onafgevangen achtergrondtaak geven."""
+        service = self.conf.get(CONF_NOTIFY_SERVICE, "")
+        has_service = getattr(self.hass.services, "has_service", lambda *args: False)
+        if service and has_service("notify", service):
+            try:
+                await asyncio.wait_for(self.hass.services.async_call(
+                    "notify", service, {"title": title, "message": message}, blocking=True,
+                ), 10)
+                return
+            except Exception as err:
+                _LOGGER.warning("notify.%s mislukt: %s — persistente melding proberen", service, err)
+        elif service:
+            _LOGGER.warning("notify.%s niet beschikbaar — persistente melding proberen", service)
+        if has_service("persistent_notification", "create"):
+            try:
+                await asyncio.wait_for(self.hass.services.async_call(
+                    "persistent_notification", "create", {
+                        "title": title, "message": message, "notification_id": f"{DOMAIN}_{key}",
+                    }, blocking=True,
+                ), 10)
+            except Exception as err:
+                _LOGGER.warning("Persistente Jacuzzi-melding mislukt: %s", err)
+        else:
+            _LOGGER.warning("Geen meldingsservice beschikbaar voor %s: %s", title, message)
 
     async def _async_call(self, domain: str, service: str, data: dict) -> bool:
         if self._stopped:
@@ -416,7 +509,7 @@ class JacuzziController:
             duty = _float(compressor, float("nan"))
             if (
                 not self._fresh(problem)
-                or problem.state != "off"
+                or not self._flow_problem_allowed(problem)
                 or not self._fresh(compressor)
                 or not math.isfinite(duty)
                 or not 0 <= duty <= 100
@@ -846,6 +939,8 @@ class JacuzziController:
         if self.conf.get(CONF_MAINTENANCE):
             self.warmtevraag = False
             self._run_active = False
+            self._flow_start_until = 0.0
+            self._flow_start_attempted = False
             # Ook onderhoud gebruikt 15 °C, NOOIT hvac off. Tot de
             # compressorstop bevestigd is behouden we aanwezige flow.
             duty = _float(compressor, float("nan"))
@@ -1045,8 +1140,37 @@ class JacuzziController:
         # Ook een extreme numerieke kuipwaarde (>45) mag geen fallback
         # activeren: deze waarde blijft een reden voor een onmiddellijke stop.
         overheated = math.isfinite(tub_temp) and tub_temp >= guard_temp
+        heat_wanted = tub_valid and (
+            demand_temp < setpoint - margin or (self._run_active and demand_temp < stop_temp)
+        )
+        self._flow_fault_due = self._since_true(
+            "flow_fault", pump_on and problem_active and self._fresh(problem), FLOW_FAULT_OFF_S
+        )
+        # DP-problem is een algemene bit, geen betrouwbare specifieke d1-code.
+        # Alleen bij een NIEUWE, verder geldige start mag hij kort blijven staan:
+        # eerst de pomp aan, dan pas hoog setpoint zodra pomp-aan bevestigd is.
+        # Sensor-/temperatuur-/piek-/lockout-stops gaan altijd vóór deze marge.
+        if not self.heating_enabled or peak_block or (tub_valid and not heat_wanted):
+            self._flow_start_until = 0.0
+            self._flow_start_attempted = False
+        rest_ready = not self._demand_suppressed or (
+            self._brake_since is None and self.restart_wait_seconds == 0
+            and live_sp <= POOLEX_SETPOINT_FLOOR + 0.1
+        )
+        if (
+            heat_wanted and sensors_ok and settings_ok and not overheated
+            and self.heating_enabled and not peak_block and not self._verify_until
+            and rest_ready and not self._run_active and compressor_on is False
+            and not self._flow_lockout and not self._brake_lockout and not self._flow_fault_due
+        ):
+            self._arm_flow_start()
+        flow_start_failed = (
+            problem_active and self._fresh(problem) and self._flow_start_attempted
+            and self._flow_start_until > 0 and self.flow_start_seconds == 0
+        )
+        problem_blocking = problem_active and not self._flow_problem_allowed(problem)
         safety_reason = (
-            "oververhitting"
+            ("oververhitting" if tub_temp >= MAX_TUB_C else "te warm")
             if overheated
             else "sensoruitval"
             if not sensors_ok
@@ -1059,7 +1183,7 @@ class JacuzziController:
             else "geen circulatie"
             if not pump_on and compressor_on is True
             else "flow-storing"
-            if problem_active or self._flow_lockout
+            if problem_blocking or self._flow_lockout
             else "stop niet bevestigd"
             if self._brake_lockout
             else ""
@@ -1079,6 +1203,11 @@ class JacuzziController:
         # wel doen — beide zijn precies wat de takken hieronder vragen.
         # Een expliciete run-latch, niet 'rem uit': startup in de dode
         # band is GEEN lopende run. De stopgrens gaat altijd vóór timers.
+        # Een verdwenen tijdelijke storing is geen actuele remreden meer;
+        # de bestaande rusttimer blijft intact, maar de status moet die
+        # timer tonen in plaats van de oude 'flow-storing' te laten hangen.
+        if not safety_reason and self._demand_suppressed and not self._brake_lockout:
+            self._suppress_reason = "anti-pendel"
         self.warmtevraag = not safety_reason and (
             demand_temp < setpoint - margin
             or (self._run_active and demand_temp < stop_temp)
@@ -1182,6 +1311,12 @@ class JacuzziController:
             self._verify_pending = False
             self._verify_tub_at_stop = None
         if not self.warmtevraag:
+            if self._run_active:
+                # De lopende startpoging is nu geëindigd. Een volgende
+                # run krijgt pas na de gewone rust/stopbevestiging een
+                # nieuw venster, nooit door retries binnen dezelfde start.
+                self._flow_start_until = 0.0
+                self._flow_start_attempted = False
             # Onmiddellijk remmen op stopgrens, sensoruitval, hvac uit of
             # storing. Er is bewust GEEN minimale looptijd voor een stop.
             if self._run_active and not safety_reason and self._compressor_recently_on:
@@ -1248,6 +1383,10 @@ class JacuzziController:
             )
         )
         if self.warmtevraag and can_restore and pump_on and not self._brake_lockout:
+            # Ook hervatten na een geslaagde meng-check is een nieuwe start;
+            # een latere d1-echo krijgt hetzelfde vaste, niet-hernieuwbare venster.
+            if not self._run_active and compressor_on is False:
+                self._arm_flow_start()
             # Actuator volgt ons doel, nooit andersom. Ook een doelwijziging
             # tijdens een run moet naar Poolex worden geschreven.
             if (
@@ -1298,10 +1437,16 @@ class JacuzziController:
             )
 
         self._notify_once(
+            "too_warm",
+            overheated and tub_temp < MAX_TUB_C,
+            "Jacuzzi: te warm",
+            f"Kuip {tub_temp:.1f} °C bereikt de relatieve grens {guard_temp:.1f} °C bij doel {setpoint:.1f} °C — rem gevraagd.",
+        )
+        self._notify_once(
             "overheat",
-            overheated,
+            overheated and tub_temp >= MAX_TUB_C,
             "Jacuzzi: oververhitting",
-            f"Kuip {tub_temp:.1f} °C bereikt noodgrens {guard_temp:.1f} °C — rem gevraagd.",
+            f"Kuip {tub_temp:.1f} °C bereikt de absolute grens {MAX_TUB_C:.1f} °C — rem gevraagd.",
         )
         self._notify_once(
             "settings_invalid",
@@ -1316,17 +1461,15 @@ class JacuzziController:
             "Verwarming geblokkeerd: kuip/actuator/compressor/pomp/storingsmeting ontbreekt of is verouderd.",
         )
 
-        # Flow-fault lockout: pomp aan + fault-bit lang aanhoudend = er
-        # komt echt geen water door (lek tussen pomp en flowmeter, of
-        # een lege kuip). Doordraaien loost de kuip leeg of laat de
+        # Flow-fault lockout: lang aanhoudende probleembit met pomp-aan
+        # is geen normale d1-aanloop meer (mogelijk lek/lege kuip, maar
+        # deze bit geeft geen afzonderlijke foutcode). Doordraaien kan de
         # pomp drooglopen. Eenmalig ingrijpen: de Gecko zet de pomp
         # zelf terug (eigen priming/filter-logica, 'non-user initiators')
         # — daarom esaleren we naar watercare 'Away': dan stopt de pack
         # ook met eigen cycli. Onbekende fault-status geeft niets vrij.
         # De noodstop vereist een bewuste herstelactie; reset niet op pump_on.
-        if not self._flow_lockout and self._since_true(
-            "flow_fault", pump_on and problem_active, FLOW_FAULT_OFF_S
-        ):
+        if not self._flow_lockout and self._flow_fault_due:
             _LOGGER.warning(
                 "Flow-fault >%d s bij draaiende pomp — pomp uit + watercare Away",
                 FLOW_FAULT_OFF_S,
@@ -1418,6 +1561,7 @@ class JacuzziController:
                                   "Benodigde circulatie kon niet worden hersteld; warmteverzoek blijft geremd.")
             else:
                 self.pump_by_us = True
+                self._pump_off_pending = False
                 self._notify_once("pump_restore_failed", False, "", "")
             # De Gecko-pack dropt de pomp af en toe zelf (blijkt normaal
             # gedrag: hij zet 'm aan zonder dat wij het zien, en uit).
@@ -1471,6 +1615,7 @@ class JacuzziController:
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
             ):
                 self.pump_by_us = True
+                self._pump_off_pending = False
 
         # Zelfs als de kuip al langer op temperatuur is, minstens 3 min
         # circuleren NA bevestigde compressorstop. Een oude temp-timer
@@ -1532,10 +1677,21 @@ class JacuzziController:
                 if self._afterheat_hold
                 else "",
             )
+            self._pump_off_pending = True
             await self._async_call(
                 "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
             )
+        # Een servicecall is geen bewijs dat Gecko het commando uitvoerde.
+        # Eigenaarschap behouden bij weigering/trage echo, zodat de volgende
+        # evaluatie kan herkansen; pas loslaten bij bevestigde pomp-uit.
+        confirmed_pump = self._state("pump_fan")
+        if (
+            self._pump_off_pending and self._fresh(confirmed_pump)
+            and confirmed_pump.state == "off" and not circulation_needed
+            and not (self.warmtevraag and can_restore)
+        ):
             self.pump_by_us = False
+            self._pump_off_pending = False
             self._compressor_recently_on = False
             self._afterheat_hold = False
 
@@ -1606,6 +1762,13 @@ class JacuzziController:
             "zet hem op heat (switch Poolex aan/uit) om weer te stoken.",
         )
 
+        self._notify_once(
+            "flow_start_failed",
+            flow_start_failed,
+            "Jacuzzi: aanloopwaarschuwing blijft staan",
+            "De probleembit is na 120 s aanlooptijd nog actief — warmteverzoek naar 15 °C; controleer de flow/unit.",
+        )
+
         # Monitor 1: echte fault-bit van de unit. Alleen melden als de
         # circulatiepomp aan staat: pomp uit + flow-fault is verwacht
         # (er stroomt dan toch niets); een vertraagde d1 na het stoppen
@@ -1613,7 +1776,7 @@ class JacuzziController:
         # zichtbaar op de sensor/entities-kaart.
         self._notify_once(
             "problem",
-            self._since_true("problem", problem_active and pump_on, PROBLEM_DELAY_S),
+            self._since_true("problem", problem_blocking and pump_on, PROBLEM_DELAY_S),
             "Jacuzzi: Poolex fault",
             "De Poolex rapporteert een probleem (problem-sensor aan). "
             "Check de unit — bij d1: te weinig doorstroom, bypass verder dichtknijpen.",
