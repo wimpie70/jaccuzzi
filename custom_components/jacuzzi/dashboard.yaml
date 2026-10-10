@@ -50,13 +50,6 @@ views:
     column_span: 3
     title: Regeling
     cards:
-    - type: entities
-      layout_options:
-        grid_columns: 12
-      title: Onderhoud
-      entities:
-      - entity: switch.jacuzzi_maintenance
-        name: Onderhoudsmodus
     - type: thermostat
       layout_options:
         grid_columns: 12
@@ -67,6 +60,8 @@ views:
         grid_columns: 12
       show_header_toggle: false
       entities:
+      - entity: switch.jacuzzi_maintenance
+        name: Onderhoudsmodus
       - entity: sensor.jacuzzi_control_status
         name: Regelstatus
       - entity: sensor.jacuzzi_demand_source
