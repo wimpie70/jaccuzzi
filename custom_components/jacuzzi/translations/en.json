@@ -127,8 +127,8 @@
       "meetbron": {
         "name": "Demand source"
       },
-      "retour_marge": {
-        "name": "Return margin"
+      "meetafwijking": {
+        "name": "Measurement bias"
       },
       "advies_doorstook": {
         "name": "Overshoot advice"

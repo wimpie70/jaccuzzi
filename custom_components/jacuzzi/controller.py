@@ -66,6 +66,7 @@ from .const import (
     FAILSAFE_NOTIFY_WINDOW_S,
     FLOW_FAULT_OFF_S,
     FLOW_START_GRACE_S,
+    HEAT_GAIN_SAMPLES,
     HEAT_LOSS_SAMPLES,
     MAINT_PUMP_GRACE_S,
     MAINT_PUMP_RETRY_S,
@@ -155,6 +156,8 @@ class JacuzziController:
         self._guard_gecko_at = -ACTUATOR_RETRY_S
         self._cool: dict | None = None  # lopend warmteverlies-meetvenster
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
+        self._run_start: tuple[float, float] | None = None  # monotonic, kuip
+        self.heat_gain_samples: list[dict] = []  # laatste N stooksnelheden
         # Alleen de eigen climate/restore bepaalt het kuip-doel. De
         # Poolex is actuator; zijn (vertraagde) echo mag niets adopteren.
         try:
@@ -182,6 +185,7 @@ class JacuzziController:
         # Alleen diagnostiek; herstel via climate-attributen bij reload.
         # Geen minimum van 2 K meer: dat hoorde bij het vervallen guard-model.
         self._retour_offset = RETOUR_GUARD_K
+        self._retour_samples = 0  # eigen leermetingen sinds (her)start
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
         self.compressor_on: bool | None = None  # onbekend is niet uit
         self.heating_enabled = valid_target  # ongeldige oude config start veilig uit
@@ -212,6 +216,11 @@ class JacuzziController:
     def retour_offset(self) -> float:
         """Geleerde kuip-retour offset (EMA per meng-check)."""
         return self._retour_offset
+
+    @property
+    def retour_samples(self) -> int:
+        """Aantal eigen meng-offset-metingen sinds (her)start."""
+        return self._retour_samples
 
     @property
     def rem_reden(self) -> str:
@@ -542,10 +551,14 @@ class JacuzziController:
     ) -> None:
         """Meet passief warmteverlies tijdens stille periodes.
 
-        Pompen uit + compressor uit + geldige kuip-temp = meetvenster.
-        Bij einde venster (pomp/compressor aan): >=3 uur én >=0.5 K
-        daling -> W/K-meting (afkoeling genormaliseerd op kuip-buiten).
-        Dek open/dicht zie je als spreiding tussen metingen.
+        Compressor uit + geen massagejets + geldige kuip-temp =
+        meetvenster. De circulatiepomp mag aan: hij voegt geen warmte
+        toe en de eigen Gecko-filtercycli (~4 min per ~90 min) zouden
+        een 3-uursvenster anders nooit laten afronden. Alleen een
+        compressor of massagejet (ventilatie/gebruik) sluit het venster:
+        >=3 uur én >=0.5 K daling -> W/K-meting (afkoeling
+        genormaliseerd op kuip-buiten). Dek open/dicht zie je als
+        spreiding tussen metingen.
         """
         amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
         ambient = (
@@ -558,7 +571,7 @@ class JacuzziController:
             for ent in MIX_PUMPS
         )
         quiet = (
-            not (pump_on or compressor_on or massage_on)
+            not (compressor_on or massage_on)
             and self._mix_until <= time.monotonic()
         )
         if quiet and tub_valid and ambient is not None:
@@ -610,6 +623,39 @@ class JacuzziController:
             rate,
             delta_t,
             w_per_k,
+        )
+
+    def _learn_heat_gain(self, tub_temp: float, now: float) -> None:
+        """Sla de netto stooksnelheid van een afgeronde run op.
+
+        Netto = gemeten kuip-stijging over de looptijd, dus inclusief
+        het passieve verlies tijdens het stoken. Minimale duur/stijging
+        filteren ruis en een 0.5 K-quantisatie van de kuipsensor weg.
+        """
+        if self._run_start is None:
+            return
+        start, tub0 = self._run_start
+        self._run_start = None
+        hours = (now - start) / 3600
+        gain = tub_temp - tub0
+        if hours < 10 / 60 or gain < 0.5:
+            return
+        self.heat_gain_samples.append(
+            {
+                "at": dt_util.now().isoformat(timespec="minutes"),
+                "hours": round(hours, 1),
+                "gain_k": round(gain, 1),
+                "rate_k_h": round(gain / hours, 2),
+                "tub_start_c": tub0,
+                "tub_end_c": tub_temp,
+            }
+        )
+        del self.heat_gain_samples[:-HEAT_GAIN_SAMPLES]
+        _LOGGER.info(
+            "Stooksnelheid geleerd: %.2f K/h (+%.1f K in %.1f u)",
+            gain / hours,
+            gain,
+            hours,
         )
 
     def _pump_cmd_ready(self, *, urgent: bool = False) -> bool:
@@ -1303,6 +1349,7 @@ class JacuzziController:
                         ),
                         RETOUR_GUARD_MAX_K,
                     )
+                    self._retour_samples += 1
                     _LOGGER.info(
                         "Retour-offset geleerd: %.1f K (gemeten %.1f K)",
                         self._retour_offset,
@@ -1352,6 +1399,7 @@ class JacuzziController:
                 # nieuw venster, nooit door retries binnen dezelfde start.
                 self._flow_start_until = 0.0
                 self._flow_start_attempted = False
+                self._learn_heat_gain(tub_temp, now)
             # Onmiddellijk remmen op stopgrens, sensoruitval, hvac uit of
             # storing. Er is bewust GEEN minimale looptijd voor een stop.
             if self._run_active and not safety_reason and self._compressor_recently_on:
@@ -1366,6 +1414,7 @@ class JacuzziController:
             # Standby herstellen mag pas nadat het lage setpoint bevestigd
             # is; nooit 'heat' inschakelen met een oud hoog setpoint.
             self._demand_suppressed = True
+            self._learn_heat_gain(tub_temp, now)
             self._run_active = False
         brake_confirmed = False
         if self._demand_suppressed:
@@ -1442,6 +1491,8 @@ class JacuzziController:
                     self.warmtevraag = False
                     await self._brake()
             if not self._brake_lockout:
+                if not self._run_active:
+                    self._run_start = (now, tub_temp)
                 new_session = not self._run_active and not self._verify_pending
                 self._run_active = True
                 self._rest_s = SP_SUPPRESS_REST_S

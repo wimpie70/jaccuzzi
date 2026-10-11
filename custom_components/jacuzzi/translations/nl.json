@@ -127,8 +127,8 @@
       "meetbron": {
         "name": "Meetbron vraag"
       },
-      "retour_marge": {
-        "name": "Retour-marge"
+      "meetafwijking": {
+        "name": "Meetafwijking kuipsensor"
       },
       "advies_doorstook": {
         "name": "Advies doorstook"

@@ -527,6 +527,22 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok)
         self.assertFalse(self.calls)
 
+    async def test_cooldown_window_survives_circulation_pump(self):
+        # Circulatie voegt geen warmte toe: de eigen Gecko-filtercycli
+        # (~4 min per ~90 min) mogen een 3-uurs meetvenster niet breken.
+        track = self.ns["JacuzziController"]._track_cooldown
+        fake_now = [datetime.now(timezone.utc)]
+        self.ns["dt_util"].now = lambda: fake_now[0]
+        self.c._mix_until = 0
+        track(self.c, 36.0, True, True, False)   # pomp aan, compressor uit
+        self.assertIsNotNone(self.c._cool)
+        fake_now[0] += timedelta(hours=4)
+        track(self.c, 35.0, True, True, False)   # nog steeds pomp aan
+        self.assertIsNotNone(self.c._cool)
+        track(self.c, 35.0, True, True, True)    # compressor -> venster sluit
+        self.assertEqual(len(self.c.heat_loss_samples), 1)
+        self.assertAlmostEqual(self.c.heat_loss_samples[0]["drop_k"], 1.0)
+
     async def test_mixing_resume_limit_is_enforced(self):
         self.c._demand_suppressed = True
         self.c._suppress_at = self.clock.value

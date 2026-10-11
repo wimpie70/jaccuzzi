@@ -27,6 +27,7 @@ from .const import (
     CONF_JACUZZI_POWER_SENSOR,
     CONF_OVERSHOOT,
     CONF_PEAK_END,
+    CONF_PEAK_START,
     CONF_POOLEX_CLIMATE,
     CONF_POOLEX_MAX_W,
     CONF_POOLEX_POWER_SENSOR,
@@ -35,6 +36,7 @@ from .const import (
     DEFAULT_AMBIENT_SENSOR,
     DEFAULT_OVERSHOOT_K,
     DEFAULT_PEAK_END,
+    DEFAULT_PEAK_START,
     DEFAULT_POOLEX_MAX_W,
     DEFAULT_TEMP_MARGIN,
     DOMAIN,
@@ -905,6 +907,16 @@ class JacuzziEnergySensor(RestoreSensor):
         self.async_write_ha_state()
 
 
+def _hours_until(conf: dict, key: str, default: str) -> float:
+    """Uren tot het eerstvolgende HH:MM-moment uit de config."""
+    hh, mm = _parse_hhmm(conf.get(key, default))
+    now = dt_util.now()
+    target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return (target - now).total_seconds() / 3600
+
+
 class _ControllerSensor(SensorEntity):
     """Base: sensor die direct een controller-waarde exposeert.
 
@@ -935,6 +947,33 @@ class _ControllerSensor(SensorEntity):
     @callback
     def _async_update(self) -> None:
         self.async_write_ha_state()
+
+    def _tub_ambient(self) -> tuple[float | None, float | None]:
+        """Kuip- (Gecko) en buitentemp, of None als een ontbreekt."""
+        conf = {**self._entry.data, **self._entry.options}
+        gecko = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
+        try:
+            tub = float(gecko.attributes["current_temperature"])
+        except (TypeError, ValueError, KeyError, AttributeError):
+            tub = None
+        try:
+            amb = float(amb_st.state)
+        except (TypeError, ValueError, AttributeError):
+            amb = None
+        return tub, amb
+
+    @staticmethod
+    def _cooling_rate_k_h(samples: list[dict], tub: float, amb: float) -> float:
+        """Verwacht passief verlies in K/h bij de huidige kuip-buiten ΔT.
+
+        De gemeten W/K van de laatste stille periode schaalt mee naar
+        elk seizoens-ΔT: rate = W/K x ΔT x 3600 / (kg x J/kgK).
+        """
+        delta_t = tub - amb
+        if delta_t <= 0:
+            return 0.0
+        return samples[-1]["w_per_k"] * delta_t * 3600 / TUB_HEAT_CAPACITY
 
 
 class JacuzziRegelstatusSensor(_ControllerSensor):
@@ -971,7 +1010,11 @@ class JacuzziMeetbronSensor(_ControllerSensor):
 
 
 class JacuzziRetourMargeSensor(_ControllerSensor):
-    """Diagnostische EMA van stopmeting minus mengmeting; geen regelcorrectie."""
+    """Meetafwijking van de kuipsensor: EMA van stopmeting minus mengmeting.
+
+    Hoeveel de kuipsensor bij een stop boven de gemengde bulk las
+    (pocket/stratificatie). Puur diagnostiek — geen regelcorrectie.
+    """
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -981,22 +1024,30 @@ class JacuzziRetourMargeSensor(_ControllerSensor):
 
     def __init__(self, entry: JacuzziConfigEntry) -> None:
         """Bind aan de controller."""
-        super().__init__(entry, "retour_marge")
+        super().__init__(entry, "meetafwijking")
 
     @property
     def native_value(self) -> float:
         """Geleerde meng-offset in K; verhoogt geen temperatuurgrens."""
         return round(self._controller.retour_offset, 1)
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Hoeveel eigen meng-metingen in deze offset zitten."""
+        return {"leermetingen_sinds_herstart": self._controller.retour_samples}
+
 
 class JacuzziOvershootAdviceSensor(_ControllerSensor):
     """Advies voor de doorstook-instelling; puur informatief.
 
-    De kuip-sensor leest bij een stop hoger dan de gemengde bulk
-    blijkt (stratificatie = geleerde retour-offset). Advies =
-    offset + vraag-marge: dan komt de gemengde bulk ~doel+marge
-    uit, symmetrisch rond de hysterese-band. Begrensd zodat
-    doel + advies nooit boven MAX_TUB_C uitkomt.
+    De vraag-cyclus (vraag -> stoken -> stop -> afkoelen) wordt met
+    de huidige doorstook gesimuleerd tot de blokkade: zo valt de
+    echte laatste stop. Advies = gemeten W/K x huidige ΔT x uren
+    vanaf die laatste stop tot piek-einde — precies de doorstook
+    die die stop had moeten halen. Zonder geleerde stooksnelheid
+    valt hij terug op het verlies over de blokkade alleen.
+    Begrensd zodat doel + advies nooit boven MAX_TUB_C uitkomt.
+    Zonder afkoelingsmeting is er geen advies.
     De gebruiker beslist zelf of hij 'm in 'Doorstook' overneemt.
     """
 
@@ -1008,32 +1059,143 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
         """Bind aan de controller."""
         super().__init__(entry, "advies_doorstook")
 
-    def _advies(self) -> float:
+    def _advies(self) -> dict | None:
+        """Reken het advies uit, of None als inputs ontbreken."""
+        samples = self._controller.heat_loss_samples
+        if not samples:
+            return None
         conf = {**self._entry.data, **self._entry.options}
+        tub, amb = self._tub_ambient()
+        if tub is None or amb is None:
+            return None
+        s_h, s_m = _parse_hhmm(conf.get(CONF_PEAK_START, DEFAULT_PEAK_START))
+        e_h, e_m = _parse_hhmm(conf.get(CONF_PEAK_END, DEFAULT_PEAK_END))
+        block_h = ((e_h * 60 + e_m) - (s_h * 60 + s_m)) / 60
+        if block_h < 0:  # blokkade loopt over middernacht
+            block_h += 24
+        now = dt_util.now()
+        start = now.replace(hour=s_h, minute=s_m, second=0, microsecond=0)
+        if start > now:
+            # start ligt vandaag nog voor ons; we kunnen wél in een
+            # gisteren gestarte blokkade zitten (eindigt na middernacht)
+            start -= timedelta(days=1)
+        in_block = now < start + timedelta(hours=block_h)
+        if not in_block:
+            start += timedelta(days=1)
+        end = start + timedelta(hours=block_h)
+        hours_end = (end - now).total_seconds() / 3600
+        hours_start = max((start - now).total_seconds() / 3600, 0.0)
+        rate = self._cooling_rate_k_h(samples, tub, amb)
+        doel = self._controller.heat_setpoint
         try:
-            margin = float(conf.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN))
+            marge = float(conf.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN))
         except (TypeError, ValueError):
-            margin = DEFAULT_TEMP_MARGIN
-        advies = self._controller.retour_offset + margin
-        return round(
-            min(max(advies, 0.0), MAX_TUB_C - self._controller.heat_setpoint), 1
+            marge = DEFAULT_TEMP_MARGIN
+        try:
+            d_cur = float(conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K))
+        except (TypeError, ValueError):
+            d_cur = DEFAULT_OVERSHOOT_K
+        gain_samples = self._controller.heat_gain_samples
+        heat_rate = gain_samples[-1]["rate_k_h"] if gain_samples else None
+        last_stop = end_b = b_start = None
+        runs = 0
+        if heat_rate and not in_block:
+            # Simuleer de vraag-cyclus met de huidige doorstook tot de
+            # blokkade; de tijdstippen van runs/stops bepaalt mee hoe
+            # lang de laatste stop moet overbruggen.
+            stop_temp = min(doel + d_cur, MAX_TUB_C)
+            t, b = now, tub
+            demand = self._controller.warmtevraag or b < doel - marge
+            for _ in range(40):
+                if t >= start:
+                    break
+                if demand:
+                    heat_h = max((stop_temp - b) / heat_rate, 0)
+                    t_end = t + timedelta(hours=heat_h)
+                    runs += 1
+                    if t_end >= start:
+                        last_stop = start
+                        b += heat_rate * (start - t).total_seconds() / 3600
+                        t = start
+                    else:
+                        last_stop = t_end
+                        if heat_h:
+                            b = stop_temp
+                        t = t_end
+                    demand = False
+                else:
+                    cool_h = (
+                        max((b - (doel - marge)) / rate, 0)
+                        if rate > 1e-6
+                        else float("inf")
+                    )
+                    t_low = t + timedelta(hours=cool_h)
+                    if t_low >= start:
+                        b -= rate * (start - t).total_seconds() / 3600
+                        t = start
+                    else:
+                        b, t = doel - marge, t_low
+                        demand = True
+            b_start = b
+            end_b = b - rate * (end - t).total_seconds() / 3600
+        # De doorstook die de laatste stop had moeten halen: verlies
+        # van die stop tot piek-einde. Geen run meer voor de blokkade
+        # -> de huidige warmte moet het hele traject dragen.
+        coast_h = (
+            (end - last_stop).total_seconds() / 3600
+            if last_stop is not None
+            else (block_h if in_block else hours_end)
         )
+        advies = min(max(rate * coast_h, 0.0), MAX_TUB_C - doel)
+        return {
+            "advies": round(advies, 1),
+            "rate": round(rate, 2),
+            "hours_end": round(hours_end, 1),
+            "hours_start": round(hours_start, 1),
+            "block_h": round(block_h, 1),
+            "loss_now": round(rate * hours_end, 1),
+            "in_block": in_block,
+            "heat_rate": heat_rate,
+            "last_stop": last_stop.strftime("%H:%M") if last_stop else None,
+            "runs": runs if heat_rate else None,
+            "b_start": round(b_start, 1) if b_start is not None else None,
+            "end_b": round(end_b, 1) if end_b is not None else None,
+            "peak_start": conf.get(CONF_PEAK_START, DEFAULT_PEAK_START),
+            "peak_end": conf.get(CONF_PEAK_END, DEFAULT_PEAK_END),
+            "at": samples[-1]["at"],
+        }
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
         """Geadviseerde doorstook in K boven het doel."""
-        return self._advies()
+        advies = self._advies()
+        return advies["advies"] if advies else None
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Onderbouwing: gemeten offset, marge en resulterende stopgrens."""
+        """Onderbouwing: gebruikte meetwaarden en blokkadevenster."""
+        advies = self._advies()
+        if advies is None:
+            return {"reden": "geen afkoelingsmeting of kuip/buiten-sensor ontbreekt"}
         conf = {**self._entry.data, **self._entry.options}
         return {
-            "retour_offset_k": round(self._controller.retour_offset, 2),
-            "vraag_marge_k": conf.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN),
+            "afkoeling_k_per_u": advies["rate"],
+            "blokkade_uren": advies["block_h"],
+            "verlies_vanaf_nu_k": advies["loss_now"],
+            "uren_tot_piek_einde": advies["hours_end"],
+            "uren_tot_piek_start": advies["hours_start"],
+            "stijgsnelheid_k_per_u": advies["heat_rate"],
+            "laatste_stop_gesimuleerd": advies["last_stop"],
+            "runs_voor_blokkade": advies["runs"],
+            "bulk_bij_blokkade_start": advies["b_start"],
+            "verwacht_piek_einde_huidig": advies["end_b"],
+            "in_blokkade": advies["in_block"],
+            "piek_start": advies["peak_start"],
+            "piek_einde": advies["peak_end"],
+            "gebaseerd_op_meting_van": advies["at"],
             "huidige_doorstook_k": conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K),
             "advies_stopgrens_c": round(
-                self._controller.heat_setpoint + self._advies(), 1
+                self._controller.heat_setpoint + advies["advies"], 1
             ),
         }
 
@@ -1062,31 +1224,11 @@ class JacuzziPeakEndForecastSensor(_ControllerSensor):
         if not samples:
             return None
         conf = {**self._entry.data, **self._entry.options}
-        gecko = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
-        amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
-        try:
-            tub = float(gecko.attributes["current_temperature"])
-        except (TypeError, ValueError, KeyError, AttributeError):
-            tub = None
-        try:
-            amb = float(amb_st.state)
-        except (TypeError, ValueError, AttributeError):
-            amb = None
+        tub, amb = self._tub_ambient()
         if tub is None or amb is None:
             return None
-        e_h, e_m = _parse_hhmm(conf.get(CONF_PEAK_END, DEFAULT_PEAK_END))
-        now = dt_util.now()
-        end = now.replace(hour=e_h, minute=e_m, second=0, microsecond=0)
-        if end <= now:
-            end += timedelta(days=1)
-        hours = (end - now).total_seconds() / 3600
-        delta_t = tub - amb
-        # W/K -> K/h: rate = w_per_k x ΔT x 3600 / (kg x 4186 J/kgK)
-        rate = (
-            samples[-1]["w_per_k"] * delta_t * 3600 / TUB_HEAT_CAPACITY
-            if delta_t > 0
-            else 0.0
-        )
+        hours = _hours_until(conf, CONF_PEAK_END, DEFAULT_PEAK_END)
+        rate = self._cooling_rate_k_h(samples, tub, amb)
         return {
             "predicted": round(tub - rate * hours, 1),
             "hours": round(hours, 1),

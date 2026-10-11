@@ -49,8 +49,8 @@ cards:
         name: Regelstatus
       - entity: sensor.jacuzzi_demand_source
         name: Meetbron vraag
-      - entity: sensor.jacuzzi_return_margin
-        name: Retour-marge (geleerd, K)
+      - entity: sensor.jacuzzi_measurement_bias
+        name: Meetafwijking kuipsensor (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
       - entity: number.jacuzzi_heat_demand_margin

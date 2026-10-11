@@ -44,10 +44,14 @@ views:
         kuip- en inlaat-sensor de echte bulk-temperatuur zien en de warmtevraag niet
         te vroeg stopt.
 
-        **Advies**: "Advies doorstook" = geleerde retour-marge + vraag-marge — met die
-        waarde komt de gemengde bulk op ~doel+marge uit. "Verwachte temp piek-einde"
-        schat de afkoeling uit het gemeten warmteverlies (W/K). Beide adviseren alleen;
-        zelf instellen in "Doorstook".
+        **Advies**: "Advies doorstook" simuleert de vraag-cyclus (stoken → koelen →
+        volgende run) met de huidige doorstook en de geleerde stook-/afkoelsnelheid
+        tot de piekblokkade — en rekent welke doorstook de laatste stop vóór de
+        blokkade nodig heeft om om piek-einde nog op doel uit te komen. Attributen
+        tonen de gesimuleerde laatste stop, de bulk bij blokkade-start en de
+        landing op piek-einde met de huidige instelling.
+        "Verwachte temp piek-einde" toont dezelfde voorspelling in °C. Beide
+        adviseren alleen; zelf instellen in "Doorstook".
 
         **Onderhoud**: zet alle automatiseringen uit — Poolex off, watercare op standby/away,
         pompen uit. Handig bij water verversen. De oude standen worden bij uitschakelen
@@ -79,11 +83,11 @@ views:
       - entity: number.jacuzzi_heat_overshoot_above_target
         name: Doorstook (stop boven doel)
       - entity: sensor.jacuzzi_overshoot_advice
-        name: Advies doorstook (geleerd)
+        name: Advies doorstook (tot piek-einde)
       - entity: sensor.jacuzzi_forecast_at_peak_end
         name: Verwachte temp piek-einde
-      - entity: sensor.jacuzzi_return_margin
-        name: Retour-marge (geleerd, K)
+      - entity: sensor.jacuzzi_measurement_bias
+        name: Meetafwijking kuipsensor (geleerd, K)
     - type: thermostat
       grid_options:
         columns: 6

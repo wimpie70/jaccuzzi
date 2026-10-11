@@ -146,3 +146,4 @@ TUB_WATER_KG = 1500        # watermassa voor energie/verlies-rekeningen
 COOLDOWN_MIN_H = 3.0       # minimale meetduur voor een geldig venster
 COOLDOWN_MIN_DROP_K = 0.5  # minimale daling om als meting te tellen
 HEAT_LOSS_SAMPLES = 10     # bewaar de laatste N metingen
+HEAT_GAIN_SAMPLES = 5      # bewaar de laatste N stook-snelheden

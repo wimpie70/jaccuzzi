@@ -170,15 +170,23 @@ schrijven werken.
   van die run (klein: ~0.5 K). Uitsluitend diagnostiek, GEEN verhoging
   van een temperatuurgrens (EMA, 0.3-gewicht, geclamped 0–9 K).
   Blijft via climate-restore bewaard over herstarts/onderhoudsreloads.
-  Zichtbaar als `sensor.jacuzzi_return_margin` (+ attribuut
-  `retour_marge` op `climate.jacuzzi_tub_target`). Let op: HA
-  slugifies entity_ids uit de EN-vertaalnaam — Nederlandse
-  translation_keys geven Engelse entity_ids.
-- **Advisensoren (v0.8.3)**: `sensor.jacuzzi_overshoot_advice`
-  = retour-marge + vraag-marge (gemengde bulk ≈ doel+marge);
+  Zichtbaar als `sensor.jacuzzi_measurement_bias` (+ attribuut
+  `retour_marge` op `climate.jacuzzi_tub_target`; attribuutnaam is
+  tevens de restore-sleutel). Let op: HA slugifies entity_ids uit
+  de EN-vertaalnaam — Nederlandse translation_keys geven Engelse
+  entity_ids.
+- **Advisensoren**: `sensor.jacuzzi_overshoot_advice` simuleert
+  de vraag-cyclus (vraag → stoken → stop → koelen) met de huidige
+  doorstook, geleerde stooksnelheid (`heat_gain_samples`) en
+  afkoelrate (W/K × ΔT) tot de blokkade; advies = verlies vanaf de
+  gesimuleerde laatste stop tot piek-einde — de doorstook die die
+  stop nodig had. Attributen: `laatste_stop_gesimuleerd`,
+  `runs_voor_blokkade`, `bulk_bij_blokkade_start`,
+  `verwacht_piek_einde_huidig` (landing met huidige doorstook).
+  Zonder stooksnelheid: terugval op verlies × blokkade-uren.
   `sensor.jacuzzi_forecast_at_peak_end` = voorspelde bulk op het
-  eerstvolgende piek-einde uit gemeten W/K × huidige ΔT.
-  Beide adviseren alleen — ze passen niets automatisch aan.
+  eerstvolgende piek-einde uit dezelfde W/K-bron.
+  Beide adviseren alleen — niets gaat automatisch.
 - **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
   naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.
   De controller houdt de circulatiepomp daarom aan zolang de uitlaat
