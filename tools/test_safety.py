@@ -390,8 +390,14 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.c._reloading = True
         await self.c.async_shutdown()
         self.assertFalse(any(s == "set_temperature" for _, s, _ in self.calls))
-        # echte unload remt wel
+        # HA-herstart (HACS-upgrade) idem: een restart is geen verwijdering.
         self.c._reloading = False
+        self.c._ha_stopping = True
+        self.c._stopped = False
+        await self.c.async_shutdown()
+        self.assertFalse(any(s == "set_temperature" for _, s, _ in self.calls))
+        # echte unload remt wel
+        self.c._ha_stopping = False
         self.c._stopped = False
         await self.c.async_shutdown()
         self.assertIn(15, self.temperatures())

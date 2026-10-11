@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 
 import homeassistant.helpers.entity_registry as er
 from homeassistant.loader import async_get_integration
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -134,6 +135,7 @@ class JacuzziController:
         self.pump_by_us = False  # wij hebben de pomp aangezet
         self._pump_off_pending = False
         self._reloading = False  # options-reload != integratie verwijderen
+        self._ha_stopping = False  # HA herstart != integratie verwijderen
         self.warmtevraag = False  # warmte gevraagd (voor sensor)
         self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
         self._since: dict[str, datetime] = {}
@@ -741,6 +743,17 @@ class JacuzziController:
                 self.hass, self._on_tick, hour=hh, minute=mm, second=0
             )
         )
+        # Een HA-herstart (o.a. HACS-upgrade) is geen verwijdering: de
+        # shutdown mag de actuator dan niet remmen — de opvolger adopteert
+        # een lopende run of remt desgevraagd zelf.
+        bus = getattr(self.hass, "bus", None)
+        if bus is not None:
+            self._unsubs.append(
+                bus.async_listen_once(
+                    EVENT_HOMEASSISTANT_STOP,
+                    lambda _event: setattr(self, "_ha_stopping", True),
+                )
+            )
         self._started = True
         await self._async_evaluate()
 
@@ -768,11 +781,12 @@ class JacuzziController:
         async with self._eval_lock:
             # Circulatie blijft behouden voor restwarmte; alleen onze eigen
             # meng-pomp afronden. De nieuwe controller bevestigt de rem opnieuw.
-            # Bij een options-reload de actuator NIET remmen: een lopende
-            # run wordt anders onderbroken terwijl de opvolger hem meteen
-            # adopteert (of alsnog remt als de situatie dat vraagt).
+            # Bij een options-reload of HA-herstart de actuator NIET remmen:
+            # een lopende run wordt anders onderbroken terwijl de opvolger
+            # hem meteen adopteert (of alsnog remt als de situatie dat
+            # vraagt). Alleen een echte unload/verwijdering remt.
             commands = []
-            if not self._reloading:
+            if not (self._reloading or self._ha_stopping):
                 commands.append(
                     (
                         "climate",
