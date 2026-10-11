@@ -44,6 +44,11 @@ views:
         kuip- en inlaat-sensor de echte bulk-temperatuur zien en de warmtevraag niet
         te vroeg stopt.
 
+        **Advies**: "Advies doorstook" = geleerde retour-marge + vraag-marge — met die
+        waarde komt de gemengde bulk op ~doel+marge uit. "Verwachte temp piek-einde"
+        schat de afkoeling uit het gemeten warmteverlies (W/K). Beide adviseren alleen;
+        zelf instellen in "Doorstook".
+
         **Onderhoud**: zet alle automatiseringen uit — Poolex off, watercare op standby/away,
         pompen uit. Handig bij water verversen. De oude standen worden bij uitschakelen
         teruggezet. Let op: de Gecko-pack doet zelf flow-checks — bij een lege kuip
@@ -67,14 +72,18 @@ views:
         name: Regelstatus
       - entity: sensor.jacuzzi_demand_source
         name: Meetbron vraag
-      - entity: sensor.jacuzzi_return_margin
-        name: Retour-marge (geleerd, K)
       - entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
       - entity: number.jacuzzi_heat_demand_margin
         name: Vraag-marge (start onder doel)
       - entity: number.jacuzzi_heat_overshoot_above_target
         name: Doorstook (stop boven doel)
+      - entity: sensor.jacuzzi_overshoot_advice
+        name: Advies doorstook (geleerd)
+      - entity: sensor.jacuzzi_forecast_at_peak_end
+        name: Verwachte temp piek-einde
+      - entity: sensor.jacuzzi_return_margin
+        name: Retour-marge (geleerd, K)
     - type: thermostat
       grid_options:
         columns: 6

@@ -174,6 +174,11 @@ schrijven werken.
   `retour_marge` op `climate.jacuzzi_tub_target`). Let op: HA
   slugifies entity_ids uit de EN-vertaalnaam — Nederlandse
   translation_keys geven Engelse entity_ids.
+- **Advisensoren (v0.8.3)**: `sensor.jacuzzi_overshoot_advice`
+  = retour-marge + vraag-marge (gemengde bulk ≈ doel+marge);
+  `sensor.jacuzzi_forecast_at_peak_end` = voorspelde bulk op het
+  eerstvolgende piek-einde uit gemeten W/K × huidige ΔT.
+  Beide adviseren alleen — ze passen niets automatisch aan.
 - **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
   naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.
   De controller houdt de circulatiepomp daarom aan zolang de uitlaat
