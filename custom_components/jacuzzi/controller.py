@@ -823,7 +823,20 @@ class JacuzziController:
         bevestigde stop: blijven remmen en alarmeren, NOOIT hvac off.
         """
         self.heating_enabled = enabled
-        if self._started:
+
+    def apply_options(self, conf: dict) -> None:
+        """Pas live leesbare opties toe zonder reload.
+
+        De evaluatielus leest tuning-opties (doorstook, vraag-marge,
+        mix-/piek-parameters) elke tick uit ``self.conf``; dezelfde
+        dict blijft geldig zodat o.a. de onderhoudsswitch zijn
+        conf-patches behoudt. Direct evalueren laat een aangescherpte
+        stopgrens meteen gelden — via het normale vraag->stop pad, met
+        run-boekhouding, niet via een remmende controller-restart.
+        """
+        self.conf.clear()
+        self.conf.update(conf)
+        if self._started and not self._stopped:
             self.hass.async_create_task(self._async_evaluate())
 
     # --- peak block ----------------------------------------------------

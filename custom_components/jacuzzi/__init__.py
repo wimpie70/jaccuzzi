@@ -5,6 +5,20 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .const import (
+    CONF_INLET_COMPENSATION,
+    CONF_MIX_ENABLED,
+    CONF_MIX_INTERVAL_MIN,
+    CONF_MIX_PULSE_S,
+    CONF_NOTIFY_SERVICE,
+    CONF_OVERSHOOT,
+    CONF_POOLEX_ALWAYS_ON,
+    CONF_SOLAR_MIN_W,
+    CONF_SOLAR_SENSOR,
+    CONF_TEMP_MARGIN,
+    CONF_WATERCARE_NORMAL,
+    CONF_WATERCARE_PEAK,
+)
 from .controller import JacuzziController
 from .dashboard import async_setup_dashboard, teardown_dashboard
 
@@ -19,6 +33,30 @@ PLATFORMS = [
 ]
 
 type JacuzziConfigEntry = ConfigEntry[JacuzziController]
+
+# Opties die de controller elke evaluatie-tick uit ``conf`` leest. Een
+# wijziging daarvan geldt bij de eerstvolgende evaluatie en mag de
+# entry NIET reloaden: een reload remt een lopende run onmiddellijk
+# op de vloer (Poolex-setpoint -> 15 °C) en verliest run-/leerstate.
+# Entity-bindings, piek-tijden, normal_setpoint en maintenance blijven
+# reloaden — die zijn bij constructie/subscription vastgelegd of
+# sturen de shutdown-choreografie aan.
+_LIVE_OPTION_KEYS = frozenset(
+    {
+        CONF_OVERSHOOT,
+        CONF_TEMP_MARGIN,
+        CONF_MIX_PULSE_S,
+        CONF_MIX_INTERVAL_MIN,
+        CONF_MIX_ENABLED,
+        CONF_POOLEX_ALWAYS_ON,
+        CONF_SOLAR_SENSOR,
+        CONF_SOLAR_MIN_W,
+        CONF_NOTIFY_SERVICE,
+        CONF_WATERCARE_PEAK,
+        CONF_WATERCARE_NORMAL,
+        CONF_INLET_COMPENSATION,
+    }
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> bool:
@@ -39,10 +77,22 @@ async def _async_update_listener(
     hass: HomeAssistant, entry: JacuzziConfigEntry
 ) -> None:
     """Reload when options change, zonder het dashboard-panel te verliezen."""
+    controller = entry.runtime_data
+    new_conf = {**entry.data, **entry.options}
+    changed = {
+        key
+        for key in {*new_conf, *controller.conf}
+        if controller.conf.get(key) != new_conf.get(key)
+    }
+    if changed <= _LIVE_OPTION_KEYS:
+        # Alleen live leesbare tuning-opties (of een no-op schrijf):
+        # conf in plaats bijwerken, de volgende evaluatie past ze toe.
+        controller.apply_options(new_conf)
+        return
     # Een dashboard-teardown tijdens reload laat de frontend naar het
     # home-dashboard springen; het panel komt meteen weer terug maar de
     # locatie niet. Markeer de reload zodat unload het panel laat staan.
-    entry.runtime_data.mark_reloading()
+    controller.mark_reloading()
     await hass.config_entries.async_reload(entry.entry_id)
 
 

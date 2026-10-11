@@ -1301,8 +1301,8 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
         self.assertEqual(calls, ["Away"])
 
-    async def test_options_reload_keeps_dashboard_registered(self):
-        """Update-listener reloadt maar markeert: unload mag dan geen teardown doen."""
+    def _listener_ns(self):
+        """Exec alleen de init-functies; injecteer de live-opties set."""
         tree = ast.parse((ROOT / "__init__.py").read_text())
         tree.body = [
             n for n in tree.body
@@ -1312,12 +1312,24 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
             )
             or isinstance(n, ast.ImportFrom) and n.module == "__future__"
         ]
-        torn, reloaded, unloaded = [], [], []
         ns2 = dict(self.ns)
-        ns2["teardown_dashboard"] = lambda hass: torn.append(hass)
         ns2["PLATFORMS"] = ["sensor"]
+        ns2["_LIVE_OPTION_KEYS"] = frozenset({"overshoot", "temp_margin"})
         exec(compile(tree, str(ROOT / "__init__.py"), "exec"), ns2)
-        entry = SimpleNamespace(entry_id="e", runtime_data=self.c)
+        return ns2
+
+    async def test_options_reload_keeps_dashboard_registered(self):
+        """Update-listener reloadt maar markeert: unload mag dan geen teardown doen."""
+        torn, reloaded, unloaded = [], [], []
+        ns2 = self._listener_ns()
+        ns2["teardown_dashboard"] = lambda hass: torn.append(hass)
+        entry = SimpleNamespace(
+            entry_id="e",
+            runtime_data=self.c,
+            data={},
+            # Structurele wijziging (piek-tijd) -> wel reload.
+            options={**self.c.conf, "peak_start": "08:00"},
+        )
         hass = SimpleNamespace(
             config_entries=SimpleNamespace(
                 async_reload=lambda entry_id: (
@@ -1338,6 +1350,56 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reloaded, ["e"])
         await ns2["async_unload_entry"](hass, entry)
         self.assertFalse(torn)
+
+    async def test_live_option_change_skips_reload_mid_run(self):
+        """Doorstook wijzigen tijdens een run mag NIET reloaden.
+
+        Een reload remde een lopende run op de vloer (Poolex 15 °C):
+        alleen live leesbare tuning-keys updaten controller.conf in
+        plaats en triggeren een gewone evaluatie.
+        """
+        reloaded = []
+        ns2 = self._listener_ns()
+        entry = SimpleNamespace(
+            entry_id="e",
+            runtime_data=self.c,
+            data={},
+            options={**self.c.conf, "overshoot": 0.5},
+        )
+        hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_reload=lambda entry_id: (
+                    reloaded.append(entry_id), asyncio.sleep(0)
+                )[1],
+            )
+        )
+        old_conf_overshoot = self.c.conf["overshoot"]
+        await ns2["_async_update_listener"](hass, entry)
+        self.assertEqual(reloaded, [])
+        self.assertFalse(self.c._reloading)
+        self.assertNotEqual(old_conf_overshoot, 0.5)
+        self.assertEqual(self.c.conf["overshoot"], 0.5)
+
+    async def test_structural_option_change_still_reloads(self):
+        """Niet-live keys (entity-binding/piek-tijd) reloaden wel."""
+        reloaded = []
+        ns2 = self._listener_ns()
+        entry = SimpleNamespace(
+            entry_id="e",
+            runtime_data=self.c,
+            data={},
+            options={**self.c.conf, "poolex_climate": "other"},
+        )
+        hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_reload=lambda entry_id: (
+                    reloaded.append(entry_id), asyncio.sleep(0)
+                )[1],
+            )
+        )
+        await ns2["_async_update_listener"](hass, entry)
+        self.assertEqual(reloaded, ["e"])
+        self.assertTrue(self.c._reloading)
 
     async def test_stale_state_counts_as_unreachable(self):
         """Een bevroren 'heat' (>15 min geen rapportage) = ook onbereikbaar."""
