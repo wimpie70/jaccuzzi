@@ -1,7 +1,7 @@
 {
   "domain": "jacuzzi",
-  "after_dependencies": ["lovelace"],
   "name": "Jacuzzi Poolex Control",
+  "after_dependencies": ["lovelace"],
   "codeowners": ["@wimpie70"],
   "config_flow": true,
   "documentation": "https://github.com/wimpie70/jaccuzzi",
