@@ -34,6 +34,12 @@
   temperature, peak, maintenance and lockout protections still take priority.
 - Notification delivery must handle missing/failed notify services, falling
   back to a registered persistent_notification service without unhandled tasks.
+- Gecko watercare multi-word options ('Super Savings') silently fail in
+  geckolib; substitute the closest single-word option (same last word, else
+  Savings/Away) rather than attempting a call that never lands.
+- Options updates reload the entry; the controller is marked `_reloading` so
+  unload keeps the yaml dashboard panel registered — tearing it down makes the
+  frontend jump to the home dashboard.
 - Run offline safety regressions with:
   `python3 -m unittest discover -s tools -p 'test_*.py'`
   These execute controller/lifecycle code against HA/service doubles; they do

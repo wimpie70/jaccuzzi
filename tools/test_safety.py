@@ -1233,6 +1233,69 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         await self.c._async_evaluate()
         self.assertFalse(self.c.pump_by_us)
 
+    async def test_watercare_multiword_falls_back_to_single_word(self):
+        """'Super Savings' faalt stilletjes in geckolib — vervang door 'Savings'."""
+        self.states["watercare"].attributes["options"] = [
+            "Away", "Savings", "Super Savings", "Weekender",
+        ]
+        for want in ("Super Savings", "SUPER_SAVINGS"):
+            with self.subTest(want=want):
+                self.calls.clear()
+                await self.c._set_watercare_opt(want)
+                calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
+                self.assertEqual(calls, ["Savings"])
+
+    async def test_watercare_multiword_without_match_uses_away(self):
+        """Geen single-word met dezelfde naam -> bekende veilige stand."""
+        self.states["watercare"].attributes["options"] = ["Away", "Super Savings"]
+        await self.c._set_watercare_opt("Super Savings")
+        calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
+        self.assertEqual(calls, ["Away"])
+
+    async def test_watercare_single_word_unchanged(self):
+        self.states["watercare"].attributes["options"] = ["Away", "Savings"]
+        await self.c._set_watercare_opt("Away")
+        calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
+        self.assertEqual(calls, ["Away"])
+
+    async def test_options_reload_keeps_dashboard_registered(self):
+        """Update-listener reloadt maar markeert: unload mag dan geen teardown doen."""
+        tree = ast.parse((ROOT / "__init__.py").read_text())
+        tree.body = [
+            n for n in tree.body
+            if (
+                isinstance(n, ast.AsyncFunctionDef)
+                and n.name in ("_async_update_listener", "async_unload_entry")
+            )
+            or isinstance(n, ast.ImportFrom) and n.module == "__future__"
+        ]
+        torn, reloaded, unloaded = [], [], []
+        ns2 = dict(self.ns)
+        ns2["teardown_dashboard"] = lambda hass: torn.append(hass)
+        ns2["PLATFORMS"] = ["sensor"]
+        exec(compile(tree, str(ROOT / "__init__.py"), "exec"), ns2)
+        entry = SimpleNamespace(entry_id="e", runtime_data=self.c)
+        hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_reload=lambda entry_id: (
+                    reloaded.append(entry_id), asyncio.sleep(0)
+                )[1],
+                async_unload_platforms=lambda e, p: (
+                    unloaded.append((e, p)), asyncio.sleep(0)
+                )[1],
+            )
+        )
+        # Echte verwijdering zonder reload-markering: teardown hoort.
+        await ns2["async_unload_entry"](hass, entry)
+        self.assertEqual(len(torn), 1)
+        torn.clear()
+        # Options-update: reload markeren -> teardown overslaan.
+        await ns2["_async_update_listener"](hass, entry)
+        self.assertTrue(self.c._reloading)
+        self.assertEqual(reloaded, ["e"])
+        await ns2["async_unload_entry"](hass, entry)
+        self.assertFalse(torn)
+
     async def test_start_after_restore(self):
         tree = ast.parse((ROOT / "__init__.py").read_text())
         fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "async_setup_entry")

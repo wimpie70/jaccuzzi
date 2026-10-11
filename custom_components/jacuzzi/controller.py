@@ -132,6 +132,7 @@ class JacuzziController:
         self.conf = conf
         self.pump_by_us = False  # wij hebben de pomp aangezet
         self._pump_off_pending = False
+        self._reloading = False  # options-reload != integratie verwijderen
         self.warmtevraag = False  # warmte gevraagd (voor sensor)
         self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
         self._peak_saved_setpoint: float | None = None  # setpoint vóór de piek
@@ -655,6 +656,12 @@ class JacuzziController:
             self.hass.config_entries.async_reload(entity_entry.config_entry_id)
         )
 
+    def mark_reloading(self) -> None:
+        """Een options-reload is GEEN verwijdering — het dashboard moet
+        geregistreerd blijven, anders springt de frontend naar het
+        home-dashboard terwijl het panel direct weer terugkomt."""
+        self._reloading = True
+
     # --- lifecycle ---------------------------------------------------
 
     async def async_start(self) -> None:
@@ -817,13 +824,46 @@ class JacuzziController:
         # Let op: de geckoal-select adverteert Title-Case options maar
         # geckolib's set_mode_by_name accepteert alleen UPPER_SNAKE.
         # Multi-word opties ('Super Savings') falen daardoor altijd
-        # stilletjes — gebruik single-word modes (Away/Savings/Weekender).
+        # stilletjes — de servicecall 'slaagt' maar de stand verandert
+        # niet. Niet proberen: val terug op de dichtstbijzijnde
+        # single-word optie (zelfde laatste woord, anders Savings/Away)
+        # zodat piek-einde/onderhoudsherstel wél echt landt.
         if " " in match.strip():
-            _LOGGER.warning(
-                "Watercare-optie %r bevat een spatie — de gecko-integratie "
-                "zet multi-word modes mogelijk niet door (stille fout)",
-                match,
+            last_word = match.strip().lower().split()[-1]
+            single = [o for o in options if " " not in str(o).strip()]
+            fallback = (
+                next(
+                    (o for o in single if str(o).strip().lower() == last_word),
+                    None,
+                )
+                or next(
+                    (
+                        o
+                        for pref in ("savings", "away")
+                        for o in single
+                        if str(o).strip().lower() == pref
+                    ),
+                    None,
+                )
+                or (single[0] if single else None)
             )
+            if fallback is not None:
+                self._notify_once(
+                    "watercare_multiword",
+                    True,
+                    "Jacuzzi: watercare-stand vervangen",
+                    f"De gecko-integratie kan '{match}' niet zetten "
+                    f"(multi-word modes falen stilletjes) — "
+                    f"'{fallback}' gebruikt.",
+                )
+                match = fallback
+            else:
+                _LOGGER.warning(
+                    "Watercare-optie %r multi-word, geen single-word "
+                    "fallback beschikbaar in %s",
+                    match,
+                    options,
+                )
         return await self._async_call(
             "select",
             "select_option",

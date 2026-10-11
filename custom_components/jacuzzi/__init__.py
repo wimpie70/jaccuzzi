@@ -38,12 +38,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> b
 async def _async_update_listener(
     hass: HomeAssistant, entry: JacuzziConfigEntry
 ) -> None:
-    """Reload when options change."""
+    """Reload when options change, zonder het dashboard-panel te verliezen."""
+    # Een dashboard-teardown tijdens reload laat de frontend naar het
+    # home-dashboard springen; het panel komt meteen weer terug maar de
+    # locatie niet. Markeer de reload zodat unload het panel laat staan.
+    entry.runtime_data.mark_reloading()
     await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> bool:
     """Unload: stop listeners and remove entities."""
-    await entry.runtime_data.async_shutdown()
-    teardown_dashboard(hass)
+    controller = entry.runtime_data
+    await controller.async_shutdown()
+    if not controller._reloading:
+        # Alleen bij echte verwijdering het panel afbreken; bij een
+        # options-reload blijft het geregistreerd en blijft de UI staan.
+        teardown_dashboard(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
