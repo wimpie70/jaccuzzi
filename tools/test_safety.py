@@ -213,6 +213,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.tub(37.5)
         self.c._demand_suppressed = True
         self.c._suppress_reason = "anti-pendel"
+        self.c._may_adopt = False  # mid-sessie: geen herstart-adoptie
         self.states["poolex"].attributes["temperature"] = 38
         await self.c._async_evaluate()
         self.assertTrue(self.c.demand_suppressed)
@@ -359,6 +360,41 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.tub(38)
         await self.c._async_evaluate()
         self.assertFalse(any(s == "turn_off" and d["entity_id"] == "pump" for _, s, d in self.calls))
+
+    async def test_restart_adopts_running_cycle(self):
+        # Herstart terwijl er gestookt wordt: compressor draait, pomp
+        # loopt, setpoint hoog, bulk onder stopgrens -> adopteren,
+        # geen rem, run loopt door.
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.assertFalse(self.c.demand_suppressed)
+        self.assertNotIn(15, self.temperatures())
+        self.assertTrue(self.c.warmtevraag)
+
+    async def test_restart_adoption_needs_running_evidence(self):
+        # Geen draaiende compressor -> geen adoptie; de gewone
+        # startup-rust/remming geldt.
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertTrue(self.c.demand_suppressed)
+
+    async def test_reload_shutdown_keeps_actuator(self):
+        # Options-reload: de Poolex-vloer NIET schrijven — de opvolger
+        # adopteert een lopende run of remt desgevraagd zelf.
+        self.c._reloading = True
+        await self.c.async_shutdown()
+        self.assertFalse(any(s == "set_temperature" for _, s, _ in self.calls))
+        # echte unload remt wel
+        self.c._reloading = False
+        self.c._stopped = False
+        await self.c.async_shutdown()
+        self.assertIn(15, self.temperatures())
 
     async def test_startup_rest_is_30_seconds_after_confirmation(self):
         self.c._demand_suppressed = True
@@ -724,6 +760,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_short_startup_rest_does_not_skip_stop_confirmation(self):
         self.c._demand_suppressed = True
         self.c._suppress_at = self.clock.value
+        self.c._may_adopt = False  # mid-sessie: geen herstart-adoptie
         await self.c._async_evaluate()
         self.clock.value += 30
         await self.c._async_evaluate()
@@ -1035,6 +1072,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.tub(37.5)
         self.c._demand_suppressed = True
         self.c._suppress_reason = "anti-pendel"
+        self.c._may_adopt = False  # mid-sessie: geen herstart-adoptie
         await self.c._async_evaluate()
         self.assertEqual(self.c.regelstatus, "wacht op stopbevestiging")
         self.assertIn(15, self.temperatures())

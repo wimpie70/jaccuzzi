@@ -173,6 +173,7 @@ class JacuzziController:
         # Reload verliest runhistorie: eerst een bevestigde rem en 30 s
         # startup-rust. Gewone anti-pendelrust na een run blijft apart.
         self._demand_suppressed = True  # gewenste rem, bevestiging apart
+        self._may_adopt = True  # eerste evaluatie mag een lopende run adopteren
         self._suppress_reason = ""  # waarom: oververhitting/hvac-uit/anti-pendel
         self._suppress_at = time.monotonic()  # rust ook na startup/reload
         self._rest_s = STARTUP_REST_S
@@ -767,16 +768,21 @@ class JacuzziController:
         async with self._eval_lock:
             # Circulatie blijft behouden voor restwarmte; alleen onze eigen
             # meng-pomp afronden. De nieuwe controller bevestigt de rem opnieuw.
-            commands = [
-                (
-                    "climate",
-                    "set_temperature",
-                    {
-                        "entity_id": self.conf["poolex_climate"],
-                        "temperature": POOLEX_SETPOINT_FLOOR,
-                    },
+            # Bij een options-reload de actuator NIET remmen: een lopende
+            # run wordt anders onderbroken terwijl de opvolger hem meteen
+            # adopteert (of alsnog remt als de situatie dat vraagt).
+            commands = []
+            if not self._reloading:
+                commands.append(
+                    (
+                        "climate",
+                        "set_temperature",
+                        {
+                            "entity_id": self.conf["poolex_climate"],
+                            "temperature": POOLEX_SETPOINT_FLOOR,
+                        },
+                    )
                 )
-            ]
             if self._mix_entity:
                 commands.append(("fan", "turn_off", {"entity_id": self._mix_entity}))
             for domain, service, data in commands:
@@ -1302,6 +1308,35 @@ class JacuzziController:
         # timer tonen in plaats van de oude 'flow-storing' te laten hangen.
         if not safety_reason and self._demand_suppressed and not self._brake_lockout:
             self._suppress_reason = "anti-pendel"
+        # Herstart-adoptie: bewijs van een gezonde lopende run —
+        # compressor draait (verse duty), circulatie loopt, het
+        # actuator-setpoint staat nog op vraaghoogte en de bulk is
+        # onder de stopgrens. De startup-rust zou zo'n run nodeloos
+        # afremmen; adopteer hem en laat de normale vraag->stop
+        # evaluatie meteen doorlopen. Alleen de eerste evaluatie.
+        may_adopt = self._may_adopt
+        self._may_adopt = False
+        if (
+            may_adopt
+            and self._demand_suppressed
+            and not safety_reason
+            and compressor_on is True
+            and pump_on
+            and live_sp > POOLEX_SETPOINT_FLOOR + 0.5
+            and demand_valid
+            and demand_temp < stop_temp
+        ):
+            self._run_active = True
+            self._run_start = (time.monotonic(), tub_temp)
+            self._compressor_recently_on = True
+            self._demand_suppressed = False
+            self._suppress_reason = ""
+            self._brake_since = None
+            _LOGGER.info(
+                "Lopende run na herstart geadopteerd (bulk %.1f °C, sp %.1f °C)",
+                demand_temp,
+                live_sp,
+            )
         self.warmtevraag = not safety_reason and (
             demand_temp < setpoint - margin
             or (self._run_active and demand_temp < stop_temp)
