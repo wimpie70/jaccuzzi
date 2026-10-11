@@ -1,5 +1,6 @@
 {
   "domain": "jacuzzi",
+  "after_dependencies": ["lovelace"],
   "name": "Jacuzzi Poolex Control",
   "codeowners": ["@wimpie70"],
   "config_flow": true,
