@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Safety-regressietests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Offline controller-tests
+        run: python -m unittest discover -s tools -p 'test_*.py' -v
+
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check --select F custom_components/jacuzzi tools
+
+  validate:
+    name: YAML/JSON + hassfest + HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pyyaml
+      - name: YAML- en JSON-syntax
+        run: |
+          python - <<'EOF'
+          import json
+          import pathlib
+          import yaml
+
+          yaml_files = [
+              "custom_components/jacuzzi/dashboard.yaml",
+              "lovelace/jacuzzi_card.yaml",
+              "packages/jacuzzi.yaml",
+          ]
+          json_files = [
+              "custom_components/jacuzzi/manifest.json",
+              "custom_components/jacuzzi/strings.json",
+              "custom_components/jacuzzi/translations/en.json",
+              "custom_components/jacuzzi/translations/nl.json",
+              "hacs.json",
+          ]
+          for f in yaml_files + json_files:
+              p = pathlib.Path(f)
+              if not p.exists():
+                  continue
+              (yaml.safe_load if p.suffix == ".yaml" else json.loads)(p.read_text())
+          print("YAML/JSON valide")
+          EOF
+      - name: hassfest
+        uses: home-assistant/actions/hassfest@master
+      - name: HACS validatie
+        uses: hacs/action@main
+        with:
+          category: integration

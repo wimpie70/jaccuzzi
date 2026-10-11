@@ -166,6 +166,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_entity_stops(self):
         del self.states["gecko"]
+        self.c._grace_until = self.clock.value - 1  # grace verlopen
         await self.c._async_evaluate()
         self.assertIn(15, self.temperatures())
 
@@ -401,6 +402,104 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.c._stopped = False
         await self.c.async_shutdown()
         self.assertIn(15, self.temperatures())
+
+    async def test_adoption_blocked_when_overheated(self):
+        # Bulk boven de hittegrens: safety wint, nooit adopteren.
+        self.c._demand_suppressed = True
+        self.tub(40.5)
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertIn(15, self.temperatures())
+
+    async def test_adoption_blocked_in_peak(self):
+        # Lopende compressor of niet: de piekblokkade staat boven adoptie.
+        self.c._demand_suppressed = True
+        self.c._in_peak_window = lambda: True
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertIn(15, self.temperatures())
+
+    async def test_adoption_blocked_compressor_unknown(self):
+        # Compressor onbetrouwbaar -> compressor_on is None -> geen bewijs.
+        self.c._demand_suppressed = True
+        self.states["compressor"].state = "unavailable"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertTrue(self.c.demand_suppressed)
+
+    async def test_adoption_is_one_shot(self):
+        # Alleen de eerste evaluatie adopteert; een latere suppressie
+        # (mid-sessie) volgt de normale remweg ook als er duty > 0 is.
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.c._run_active = False
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertTrue(self.c.demand_suppressed)
+
+    async def test_heat_gain_learned_on_run_stop(self):
+        # Run start (36 < 36.5 vraaggrens), stopt op stopgrens 38 -> sample.
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.clock.value += 3600
+        self.tub(38.0)
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertEqual(len(self.c.heat_gain_samples), 1)
+        self.assertEqual(self.c.heat_gain_samples[0]["rate_k_h"], 2.0)
+        self.assertEqual(self.c.heat_gain_samples[0]["gain_k"], 2.0)
+
+    async def test_margin_zero_allows_demand(self):
+        # Marge 0 is geldig: vraag zodra de bulk onder het doel zakt.
+        self.c.conf["temp_margin"] = 0.0
+        self.tub(36.9)
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.warmtevraag)
+
+    async def test_negative_margin_rejected(self):
+        self.c.conf["temp_margin"] = -0.1
+        self.tub(36)
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertIn(15, self.temperatures())
+
+    async def test_startup_grace_defers_brake_and_keeps_adoption(self):
+        # Upstream-entities ontbreken nog vlak na de start: niet remmen,
+        # niet alarmeren en _may_adopt bewaren tot ze er zijn.
+        del self.states["gecko"]
+        await self.c._async_evaluate()
+        self.assertNotIn(15, self.temperatures())
+        self.assertTrue(self.c._may_adopt)
+        self.assertFalse(self.c._run_active)
+        # Gecko verschijnt: de lopende run wordt meteen geadopteerd.
+        self.tub(36)
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.assertFalse(self.c.demand_suppressed)
+        self.assertNotIn(15, self.temperatures())
+
+    async def test_startup_grace_expired_brakes_normally(self):
+        # Na de grace geldt een missende entity weer als uitval -> rem.
+        del self.states["gecko"]
+        self.c._grace_until = self.clock.value - 1
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._run_active)
+        self.assertIn(15, self.temperatures())
+
+    def test_peak_window_over_midnight(self):
+        # De echte _in_peak_window (fixture stubt hem); venster 22:00-06:00.
+        real = self.ns["JacuzziController"]._in_peak_window
+        self.c.conf["peak_start"] = "22:00"
+        self.c.conf["peak_end"] = "06:00"
+        for hour, expect in [(23, True), (5, True), (12, False), (21, False)]:
+            self.ns["dt_util"].now = (
+                lambda h=hour: datetime(2026, 1, 1, h, tzinfo=timezone.utc)
+            )
+            self.assertIs(real(self.c), expect, f"uur {hour}")
 
     async def test_startup_rest_is_30_seconds_after_confirmation(self):
         self.c._demand_suppressed = True

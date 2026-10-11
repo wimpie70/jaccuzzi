@@ -83,6 +83,7 @@ DEFAULT_INLET_COMPENSATION_K = 0.35
 POOLEX_SETPOINT_FLOOR = 15.0   # tuya minimum in heat-mode
 SP_SUPPRESS_REST_S = 1800      # normale anti-pendelrust na een run
 STARTUP_REST_S = 30           # aparte korte test/startup-rust na herstart/reload
+STARTUP_GRACE_S = 90          # ontbrekende entities stellen rem/melding kort uit
 # Temperatuur- en sensorstops mogen nooit op een minimale looptijd wachten.
 MAX_TUB_C = 40.0              # absolute softwaregrens; overshoot wordt hier begrensd
 SENSOR_MAX_AGE_S = 300        # vereist periodieke HA-rapportage, ook bij gelijke waarde

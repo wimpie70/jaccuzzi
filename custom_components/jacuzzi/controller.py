@@ -87,6 +87,7 @@ from .const import (
     RETOUR_GUARD_MIN_K,
     SOLAR_SURPLUS_S,
     SP_SUPPRESS_REST_S,
+    STARTUP_GRACE_S,
     STARTUP_REST_S,
     MAX_TUB_C,
     SENSOR_MAX_AGE_S,
@@ -176,6 +177,10 @@ class JacuzziController:
         # startup-rust. Gewone anti-pendelrust na een run blijft apart.
         self._demand_suppressed = True  # gewenste rem, bevestiging apart
         self._may_adopt = True  # eerste evaluatie mag een lopende run adopteren
+        # Upstream-integraties (gecko/tuya) laden na een herstart later dan
+        # wij: ontbrekende entities mogen dan nog niet remmen of alarmeren.
+        self._grace_until = time.monotonic() + STARTUP_GRACE_S
+        self._entity_grace = False
         self._suppress_reason = ""  # waarom: oververhitting/hvac-uit/anti-pendel
         self._suppress_at = time.monotonic()  # rust ook na startup/reload
         self._rest_s = STARTUP_REST_S
@@ -1043,6 +1048,15 @@ class JacuzziController:
             self._maybe_reload_gecko()
         # Ontbrekende entities zijn GEEN reden om de rem over te slaan.
         # Onbekend betekent: niet verwarmen; aanwezige pomp mag blijven nakoelen.
+        # Startup-grace: entities die nog niet bestaan (upstream-integratie
+        # laadt nog) zijn "nog niet bekend", geen sensoruitval — de rem en
+        # de melding wachten tot de grace voorbij is, en _may_adopt wordt
+        # dan pas verbruikt. Verbruikt = entity bestaat wél maar rapporteert
+        # ongeldig/stale: dat telt meteen als uitval.
+        self._entity_grace = (
+            any(s is None for s in (poolex, jacuzzi, pump, compressor, problem))
+            and time.monotonic() < self._grace_until
+        )
         poolex = poolex or State(self.conf["poolex_climate"], "unavailable")
         jacuzzi = jacuzzi or State(self.conf["jacuzzi_climate"], "unavailable")
         pump = pump or State(self.conf["pump_fan"], "unavailable")
@@ -1328,8 +1342,10 @@ class JacuzziController:
         # onder de stopgrens. De startup-rust zou zo'n run nodeloos
         # afremmen; adopteer hem en laat de normale vraag->stop
         # evaluatie meteen doorlopen. Alleen de eerste evaluatie.
-        may_adopt = self._may_adopt
-        self._may_adopt = False
+        may_adopt = False
+        if not self._entity_grace:
+            may_adopt = self._may_adopt
+            self._may_adopt = False
         if (
             may_adopt
             and self._demand_suppressed
@@ -1471,7 +1487,11 @@ class JacuzziController:
                 self._suppress_at = now
                 self._rest_s = SP_SUPPRESS_REST_S
             self._demand_suppressed = True
-            self._suppress_reason = safety_reason or "anti-pendel"
+            self._suppress_reason = (
+                "wacht op entiteiten"
+                if self._entity_grace
+                else safety_reason or "anti-pendel"
+            )
         if poolex_off:
             # Standby herstellen mag pas nadat het lage setpoint bevestigd
             # is; nooit 'heat' inschakelen met een oud hoog setpoint.
@@ -1479,7 +1499,7 @@ class JacuzziController:
             self._learn_heat_gain(tub_temp, now)
             self._run_active = False
         brake_confirmed = False
-        if self._demand_suppressed:
+        if self._demand_suppressed and not self._entity_grace:
             brake_confirmed = await self._brake()
 
         # Meng-check begint pas NA bevestigde compressorstop. De timer
@@ -1609,7 +1629,7 @@ class JacuzziController:
         )
         self._notify_once(
             "sensor_invalid",
-            not sensors_ok,
+            not sensors_ok and not self._entity_grace,
             "Jacuzzi: meting onbetrouwbaar",
             "Verwarming geblokkeerd: kuip/actuator/compressor/pomp/storingsmeting ontbreekt of is verouderd.",
         )

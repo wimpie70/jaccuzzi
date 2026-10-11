@@ -51,5 +51,7 @@
   not prove hardware behaviour or Home Assistant platform compatibility.
 - Lint with `ruff check --select F custom_components/jacuzzi tools/test_safety.py`
   and check whitespace with `git diff --check`.
+- CI (`.github/workflows/ci.yml`) runs on push/PR to master: the unittest
+  suite, ruff, YAML/JSON syntax validation, hassfest and the HACS action.
 - Do not test actuator commands against production, publish releases, or push
   changes unless the user explicitly requests it.
