@@ -490,6 +490,17 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.c._run_active)
         self.assertIn(15, self.temperatures())
 
+    async def test_peak_end_records_landing(self):
+        # Bij einde blokkade: werkelijke kuip vs doel vastleggen als
+        # terugkoppeling voor het doorstook-advies.
+        self.tub(36.4)
+        await self.c._on_peak_end(None)
+        landing = self.c.peak_landing
+        self.assertIsNotNone(landing)
+        self.assertEqual(landing["tub_c"], 36.4)
+        self.assertEqual(landing["target_c"], 37)
+        self.assertEqual(landing["delta_k"], -0.6)
+
     def test_peak_window_over_midnight(self):
         # De echte _in_peak_window (fixture stubt hem); venster 22:00-06:00.
         real = self.ns["JacuzziController"]._in_peak_window

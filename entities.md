@@ -185,7 +185,11 @@ schrijven werken.
   `verwacht_piek_einde_huidig` (landing met huidige doorstook).
   Zonder stooksnelheid: terugval op verlies × blokkade-uren.
   `sensor.jacuzzi_forecast_at_peak_end` = voorspelde bulk op het
-  eerstvolgende piek-einde uit dezelfde W/K-bron.
+  eerstvolgende piek-einde uit dezelfde W/K-bron. Attributen
+  `landing_gemeten_c`/`landing_doel_c`/`landing_delta_k`/`landing_op`
+  tonen de werkelijke landing bij de laatste blokkade-einde —
+  terugkoppeling of de doorstook klopte (restored via de
+  heat_loss-sensor).
   Beide adviseren alleen — niets gaat automatisch.
 - **Uitlaat (DP25) stagneert na compressor-stop**: 08/10 spikte hij
   naar 52 °C vlak na stoppen — restwarmte in de wisselaar zonder flow.

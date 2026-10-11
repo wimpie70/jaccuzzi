@@ -585,6 +585,7 @@ class JacuzziHeatLossSensor(RestoreSensor):
             {
                 "samples": self._entry.runtime_data.heat_loss_samples,
                 "gain_samples": self._entry.runtime_data.heat_gain_samples,
+                "landing": self._entry.runtime_data.peak_landing,
             }
         )
 
@@ -601,6 +602,9 @@ class JacuzziHeatLossSensor(RestoreSensor):
             gain = stored.get("gain_samples")
             if gain and not self._entry.runtime_data.heat_gain_samples:
                 self._entry.runtime_data.heat_gain_samples = list(gain)
+            landing = stored.get("landing")
+            if landing and self._entry.runtime_data.peak_landing is None:
+                self._entry.runtime_data.peak_landing = landing
 
     @callback
     def _async_update(self) -> None:
@@ -1254,15 +1258,28 @@ class JacuzziPeakEndForecastSensor(_ControllerSensor):
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Onderbouwing: gebruikte meetwaarden en resttijd."""
+        """Onderbouwing: gebruikte meetwaarden, resttijd en landing-check."""
         forecast = self._forecast()
-        if forecast is None:
-            return {"reden": "geen afkoelingsmeting of sensor ontbreekt"}
-        return {
-            "uren_tot_piek_einde": forecast["hours"],
-            "piek_einde": forecast["peak_end"],
-            "afkoeling_k_per_u": forecast["rate"],
-            "kuip_nu_c": forecast["tub"],
-            "buiten_nu_c": forecast["amb"],
-            "gebaseerd_op_meting_van": forecast["at"],
-        }
+        attrs = (
+            {
+                "uren_tot_piek_einde": forecast["hours"],
+                "piek_einde": forecast["peak_end"],
+                "afkoeling_k_per_u": forecast["rate"],
+                "kuip_nu_c": forecast["tub"],
+                "buiten_nu_c": forecast["amb"],
+                "gebaseerd_op_meting_van": forecast["at"],
+            }
+            if forecast
+            else {"reden": "geen afkoelingsmeting of sensor ontbreekt"}
+        )
+        landing = self._controller.peak_landing
+        if landing:
+            attrs.update(
+                {
+                    "landing_gemeten_c": landing["tub_c"],
+                    "landing_doel_c": landing["target_c"],
+                    "landing_delta_k": landing["delta_k"],
+                    "landing_op": landing["at"],
+                }
+            )
+        return attrs

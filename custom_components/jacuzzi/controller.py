@@ -161,6 +161,9 @@ class JacuzziController:
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
         self._run_start: tuple[float, float] | None = None  # monotonic, kuip
         self.heat_gain_samples: list[dict] = []  # laatste N stooksnelheden
+        # Gemeten landing bij einde blokkade (kuip vs doel) — terugkoppeling
+        # van het doorstook-advies op de werkelijkheid.
+        self.peak_landing: dict | None = None
         # Alleen de eigen climate/restore bepaalt het kuip-doel. De
         # Poolex is actuator; zijn (vertraagde) echo mag niets adopteren.
         try:
@@ -1002,6 +1005,27 @@ class JacuzziController:
         self._run_active = False
         self._demand_suppressed = True
         self._suppress_reason = "piek-einde"
+        # Landing-check: klopte de doorstook? Positieve delta = ruim gehaald,
+        # negatief = tekort bij einde blokkade.
+        jacuzzi = self._state("jacuzzi_climate")
+        tub_now = (
+            _attr_float(jacuzzi, "current_temperature", float("nan"))
+            if jacuzzi
+            else float("nan")
+        )
+        if math.isfinite(tub_now):
+            self.peak_landing = {
+                "at": dt_util.now().isoformat(timespec="minutes"),
+                "tub_c": round(tub_now, 1),
+                "target_c": self._heat_setpoint,
+                "delta_k": round(tub_now - self._heat_setpoint, 1),
+            }
+            _LOGGER.info(
+                "Landing piek-einde: kuip %.1f °C vs doel %.1f (Δ %+.1f K)",
+                tub_now,
+                self._heat_setpoint,
+                self.peak_landing["delta_k"],
+            )
         ok = await self._set_watercare("watercare_normal") and ok
         # False -> evaluate roept _on_peak_end de volgende tick opnieuw
         self._peak_active = not ok
