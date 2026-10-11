@@ -37,6 +37,11 @@
 - Gecko watercare multi-word options ('Super Savings') silently fail in
   geckolib; substitute the closest single-word option (same last word, else
   Savings/Away) rather than attempting a call that never lands.
+- Unreachable monitoring covers staleness too: an entity that stops reporting
+  (last_reported older than SENSOR_MAX_AGE_S) counts as unreachable, not only
+  unavailable/unknown. Partial outages keep a cross-channel: with Gecko dead
+  the Poolex d1 bit still detects flow loss; with Poolex dead, compressor
+  state becomes "unknown" (never "off") so circulation and afterheat persist.
 - Options updates reload the entry; the controller is marked `_reloading` so
   unload keeps the yaml dashboard panel registered — tearing it down makes the
   frontend jump to the home dashboard.

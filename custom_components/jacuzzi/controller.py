@@ -135,7 +135,6 @@ class JacuzziController:
         self._reloading = False  # options-reload != integratie verwijderen
         self.warmtevraag = False  # warmte gevraagd (voor sensor)
         self._compressor_recently_on = False  # compressor heeft gedraaid (nadraai)
-        self._peak_saved_setpoint: float | None = None  # setpoint vóór de piek
         self._since: dict[str, datetime] = {}
         self._notified: set[str] = set()
         self._last_gecko_reload = 0.0
@@ -174,7 +173,6 @@ class JacuzziController:
         self._suppress_reason = ""  # waarom: oververhitting/hvac-uit/anti-pendel
         self._suppress_at = time.monotonic()  # rust ook na startup/reload
         self._rest_s = STARTUP_REST_S
-        self._sp_write_at = 0.0  # monotonic ts laatste sp-write
         self._afterheat_hold = False  # pomp vastgehouden voor nakoeling
         self._verify_until = 0.0  # einde meng-check (monotonic)
         self._verify_pending = False  # check klaar: hervat toegestaan
@@ -185,8 +183,6 @@ class JacuzziController:
         # Geen minimum van 2 K meer: dat hoorde bij het vervallen guard-model.
         self._retour_offset = RETOUR_GUARD_K
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
-        # Compressorhistorie is alleen voor nadraai, nooit sensorselectie.
-        self._comp_last_on = 0.0
         self.compressor_on: bool | None = None  # onbekend is niet uit
         self.heating_enabled = valid_target  # ongeldige oude config start veilig uit
         self.demand_temp: float | None = None  # bron-temp voor het display
@@ -770,7 +766,6 @@ class JacuzziController:
         if not math.isfinite(value) or not 20.0 <= value <= MAX_TUB_C:
             raise ValueError(f"Kuip-doel moet tussen 20 en {MAX_TUB_C:g} °C liggen")
         self._heat_setpoint = value
-        self._peak_saved_setpoint = None
         if self._started:
             self.hass.async_create_task(self._async_evaluate())
 
@@ -896,8 +891,7 @@ class JacuzziController:
             },
         )
         if ok:
-            self._sp_write_at = time.monotonic()
-        ok = await self._set_watercare("watercare_peak") and ok
+            ok = await self._set_watercare("watercare_peak") and ok
         # False -> evaluate roept _on_peak_start de volgende tick opnieuw
         self._peak_active = ok
 
@@ -921,7 +915,6 @@ class JacuzziController:
                 "temperature": POOLEX_SETPOINT_FLOOR,
             },
         )
-        self._peak_saved_setpoint = None
         self._run_active = False
         self._demand_suppressed = True
         self._suppress_reason = "piek-einde"
@@ -947,21 +940,24 @@ class JacuzziController:
         problem = self._state("problem_sensor")
         # Monitor 0: Poolex onbereikbaar — stroomstoring of de
         # PRCD-stekker heeft getrapt (unit fysiek spanningsloos).
-        poolex_gone = poolex is None or poolex.state in ("unavailable", "unknown")
+        # _fresh dekt drie vormen: entity weg, unavailable/unknown EN een
+        # bevroren state die > SENSOR_MAX_AGE_S niets meer rapporteert
+        # (tuya/gecko kunnen een oude 'heat' laten staan).
+        poolex_gone = not self._fresh(poolex)
         self._notify_once(
             "poolex_unreachable",
             self._since_true("poolex_unavail", poolex_gone, UNREACHABLE_S),
             "Jacuzzi: Poolex onbereikbaar",
-            "De warmtepomp is al 15 min niet bereikbaar — stroomstoring of "
-            "de test/reset-stekker getrapt? Check de unit.",
+            "De warmtepomp rapporteert al 15 min niet — stroomstoring, "
+            "PRCD-stekker getrapt of tuya-link dood? Check de unit.",
         )
-        gecko_gone = jacuzzi is None or jacuzzi.state in ("unavailable", "unknown")
+        gecko_gone = not self._fresh(jacuzzi)
         gecko_down = self._since_true("gecko_unavail", gecko_gone, UNREACHABLE_S)
         self._notify_once(
             "gecko_unreachable",
             gecko_down,
             "Jacuzzi: Gecko onbereikbaar",
-            "De jacuzzi-entities zijn al 15 min unavailable — Gecko-cloud "
+            "De jacuzzi-entities rapporteren al 15 min niet — Gecko-cloud "
             "onbereikbaar of in.touch offline? Check de app.",
         )
         if gecko_down:
@@ -1137,7 +1133,6 @@ class JacuzziController:
         # Onbekend is NIET uit. Houd circulatie vast totdat uit bevestigd is.
         compressor_on = duty > 0 if compressor_valid else None
         if compressor_on:
-            self._comp_last_on = time.monotonic()
             self._compressor_recently_on = True
         self.compressor_on = compressor_on
         pump_on = pump.state == "on"
@@ -1447,6 +1442,7 @@ class JacuzziController:
                     self.warmtevraag = False
                     await self._brake()
             if not self._brake_lockout:
+                new_session = not self._run_active and not self._verify_pending
                 self._run_active = True
                 self._rest_s = SP_SUPPRESS_REST_S
                 self._demand_suppressed = False
@@ -1455,6 +1451,10 @@ class JacuzziController:
                 if self._verify_pending:
                     self._verify_resumes += 1
                     self._verify_pending = False
+                elif new_session:
+                    # Een rust-gescheiden run is een nieuwe sessie; de
+                    # hervat-cap geldt per aaneengesloten episode.
+                    self._verify_resumes = 0
 
         # Remfout is gelatcht: nooit opnieuw een hoog warmteverzoek na een
         # falende stop. Standby op 15 °C blijft behouden, Poolex nooit off.

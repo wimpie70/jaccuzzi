@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from datetime import timedelta
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -20,16 +21,24 @@ from homeassistant.helpers.restore_state import ExtraStoredData, RestoredExtraDa
 from homeassistant.util import dt as dt_util
 
 from . import JacuzziConfigEntry
-from .controller import SIGNAL_UPDATE
+from .controller import SIGNAL_UPDATE, _parse_hhmm
 from .const import (
     CONF_JACUZZI_CLIMATE,
     CONF_JACUZZI_POWER_SENSOR,
+    CONF_OVERSHOOT,
+    CONF_PEAK_END,
     CONF_POOLEX_CLIMATE,
     CONF_POOLEX_MAX_W,
     CONF_POOLEX_POWER_SENSOR,
     CONF_PUMP_FAN,
+    CONF_TEMP_MARGIN,
+    DEFAULT_AMBIENT_SENSOR,
+    DEFAULT_OVERSHOOT_K,
+    DEFAULT_PEAK_END,
     DEFAULT_POOLEX_MAX_W,
+    DEFAULT_TEMP_MARGIN,
     DOMAIN,
+    MAX_TUB_C,
     POOLEX_OUTLET_SENSOR,
 )
 
@@ -85,6 +94,8 @@ async def async_setup_entry(
         JacuzziRegelstatusSensor(entry),
         JacuzziMeetbronSensor(entry),
         JacuzziRetourMargeSensor(entry),
+        JacuzziOvershootAdviceSensor(entry),
+        JacuzziPeakEndForecastSensor(entry),
     ]
     conf = {**entry.data, **entry.options}
     for conf_key, translation_key in ENERGY_SENSORS:
@@ -976,3 +987,133 @@ class JacuzziRetourMargeSensor(_ControllerSensor):
     def native_value(self) -> float:
         """Geleerde meng-offset in K; verhoogt geen temperatuurgrens."""
         return round(self._controller.retour_offset, 1)
+
+
+class JacuzziOvershootAdviceSensor(_ControllerSensor):
+    """Advies voor de doorstook-instelling; puur informatief.
+
+    De kuip-sensor leest bij een stop hoger dan de gemengde bulk
+    blijkt (stratificatie = geleerde retour-offset). Advies =
+    offset + vraag-marge: dan komt de gemengde bulk ~doel+marge
+    uit, symmetrisch rond de hysterese-band. Begrensd zodat
+    doel + advies nooit boven MAX_TUB_C uitkomt.
+    De gebruiker beslist zelf of hij 'm in 'Doorstook' overneemt.
+    """
+
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:arrow-expand-up"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        super().__init__(entry, "advies_doorstook")
+
+    def _advies(self) -> float:
+        conf = {**self._entry.data, **self._entry.options}
+        try:
+            margin = float(conf.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN))
+        except (TypeError, ValueError):
+            margin = DEFAULT_TEMP_MARGIN
+        advies = self._controller.retour_offset + margin
+        return round(
+            min(max(advies, 0.0), MAX_TUB_C - self._controller.heat_setpoint), 1
+        )
+
+    @property
+    def native_value(self) -> float:
+        """Geadviseerde doorstook in K boven het doel."""
+        return self._advies()
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Onderbouwing: gemeten offset, marge en resulterende stopgrens."""
+        conf = {**self._entry.data, **self._entry.options}
+        return {
+            "retour_offset_k": round(self._controller.retour_offset, 2),
+            "vraag_marge_k": conf.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN),
+            "huidige_doorstook_k": conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K),
+            "advies_stopgrens_c": round(
+                self._controller.heat_setpoint + self._advies(), 1
+            ),
+        }
+
+
+class JacuzziPeakEndForecastSensor(_ControllerSensor):
+    """Voorspelde kuip-temp op het eerstvolgende piek-einde.
+
+    Afkoeling = gemeten W/K x huidige (kuip - buiten); W/K schaalt
+    mee naar winterse nachten. Zonder afkoelingsmeting of sensor
+    is er geen voorspelling — de sensor toont dan niets.
+    """
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:thermometer-clock"
+
+    def __init__(self, entry: JacuzziConfigEntry) -> None:
+        """Bind aan de controller."""
+        super().__init__(entry, "verwacht_piek_einde")
+
+    def _forecast(self) -> dict | None:
+        """Reken de voorspelling uit, of None als inputs ontbreken."""
+        samples = self._controller.heat_loss_samples
+        if not samples:
+            return None
+        conf = {**self._entry.data, **self._entry.options}
+        gecko = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
+        amb_st = self.hass.states.get(DEFAULT_AMBIENT_SENSOR)
+        try:
+            tub = float(gecko.attributes["current_temperature"])
+        except (TypeError, ValueError, KeyError, AttributeError):
+            tub = None
+        try:
+            amb = float(amb_st.state)
+        except (TypeError, ValueError, AttributeError):
+            amb = None
+        if tub is None or amb is None:
+            return None
+        e_h, e_m = _parse_hhmm(conf.get(CONF_PEAK_END, DEFAULT_PEAK_END))
+        now = dt_util.now()
+        end = now.replace(hour=e_h, minute=e_m, second=0, microsecond=0)
+        if end <= now:
+            end += timedelta(days=1)
+        hours = (end - now).total_seconds() / 3600
+        delta_t = tub - amb
+        # W/K -> K/h: rate = w_per_k x ΔT x 3600 / (kg x 4186 J/kgK)
+        rate = (
+            samples[-1]["w_per_k"] * delta_t * 3600 / TUB_HEAT_CAPACITY
+            if delta_t > 0
+            else 0.0
+        )
+        return {
+            "predicted": round(tub - rate * hours, 1),
+            "hours": round(hours, 1),
+            "rate": round(rate, 2),
+            "tub": tub,
+            "amb": amb,
+            "at": samples[-1]["at"],
+            "peak_end": conf.get(CONF_PEAK_END, DEFAULT_PEAK_END),
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        """Voorspelde bulk-temperatuur op piek-einde."""
+        forecast = self._forecast()
+        return forecast["predicted"] if forecast else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Onderbouwing: gebruikte meetwaarden en resttijd."""
+        forecast = self._forecast()
+        if forecast is None:
+            return {"reden": "geen afkoelingsmeting of sensor ontbreekt"}
+        return {
+            "uren_tot_piek_einde": forecast["hours"],
+            "piek_einde": forecast["peak_end"],
+            "afkoeling_k_per_u": forecast["rate"],
+            "kuip_nu_c": forecast["tub"],
+            "buiten_nu_c": forecast["amb"],
+            "gebaseerd_op_meting_van": forecast["at"],
+        }

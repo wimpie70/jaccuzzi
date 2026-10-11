@@ -129,6 +129,12 @@
       },
       "retour_marge": {
         "name": "Retour-marge"
+      },
+      "advies_doorstook": {
+        "name": "Advies doorstook"
+      },
+      "verwacht_piek_einde": {
+        "name": "Verwachte temp piek-einde"
       }
     },
     "switch": {

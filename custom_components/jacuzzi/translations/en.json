@@ -129,6 +129,12 @@
       },
       "retour_marge": {
         "name": "Return margin"
+      },
+      "advies_doorstook": {
+        "name": "Overshoot advice"
+      },
+      "verwacht_piek_einde": {
+        "name": "Forecast at peak end"
       }
     },
     "switch": {

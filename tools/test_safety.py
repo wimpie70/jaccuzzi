@@ -538,6 +538,33 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         await self.c._async_evaluate()
         self.assertNotIn(37, self.temperatures())
 
+    async def test_dwell_started_run_resets_verify_resume_counter(self):
+        # Cap aangeslagen op een afgesloten episode: een rust-gescheiden
+        # nieuwe run is een nieuwe sessie en mag opnieuw 2x vervroegd
+        # hervatten na een geslaagde meng-check.
+        self.c._verify_resumes = 2
+        self.states["compressor"].state = "0"
+        self.states["poolex"].attributes["temperature"] = 15
+        self.c._suppress_at = self.clock.value - 2000  # dwell voorbij
+        self.tub(35)
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.assertEqual(self.c._verify_resumes, 0)
+        # Deze nieuwe run stopt -> meng-check -> nog vraag -> mag
+        # opnieuw vervroegd hervatten (cap geldt per sessie).
+        self.states["compressor"].state = "40"
+        await self.c._async_evaluate()
+        self.tub(38)
+        await self.c._async_evaluate()
+        self.states["compressor"].state = "0"
+        await self.c._async_evaluate()
+        self.assertGreater(self.c._verify_until, self.clock.value)
+        self.tub(36)
+        self.clock.value += 360
+        await self.c._async_evaluate()
+        self.assertIn(37, self.temperatures())
+        self.assertEqual(self.c._verify_resumes, 1)
+
     async def test_disabled_demand_allows_only_low_standby(self):
         self.c.heating_enabled = False
         self.states["poolex"].state = "off"
@@ -1295,6 +1322,31 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reloaded, ["e"])
         await ns2["async_unload_entry"](hass, entry)
         self.assertFalse(torn)
+
+    async def test_stale_state_counts_as_unreachable(self):
+        """Een bevroren 'heat' (>15 min geen rapportage) = ook onbereikbaar."""
+        # _since_true gebruikt dt_util.now(); zaai het bewijs in het
+        # verleden zodat de 15-min drempel meteen gehaald wordt.
+        self.c._since["poolex_unavail"] = (
+            datetime.now(timezone.utc) - timedelta(minutes=16)
+        )
+        self.c._since["gecko_unavail"] = (
+            datetime.now(timezone.utc) - timedelta(minutes=16)
+        )
+        # Gecko-reloadpad nodigt entity_registry uit — stub 'm leeg.
+        self.ns["er"] = SimpleNamespace(
+            async_get=lambda hass: SimpleNamespace(async_get=lambda eid: None)
+        )
+        alerts = []
+        self.c._notify_once = lambda *a: alerts.append(a)
+        self.tub(37, age=901)  # state 'heat' maar verslag stopt
+        await self.c._async_evaluate()
+        keys = {a[0] for a in alerts if a[1]}
+        self.assertIn("gecko_unreachable", keys)
+        # poolex bleef vers rapporteren in deze test -> geen melding
+        self.assertNotIn("poolex_unreachable", keys)
+        # én de rem is gelegd (sensoruitval), want de kuip is niet vers
+        self.assertIn(15, self.temperatures())
 
     async def test_start_after_restore(self):
         tree = ast.parse((ROOT / "__init__.py").read_text())
