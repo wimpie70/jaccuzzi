@@ -101,7 +101,7 @@ async def async_setup_entry(
                 default=DEFAULT_TEMP_MARGIN,
                 translation_key="temp_margin",
                 icon="mdi:thermometer-low",
-                min_v=0.1,
+                min_v=0.0,
                 max_v=5.0,
                 step=0.1,
                 unit="°C",

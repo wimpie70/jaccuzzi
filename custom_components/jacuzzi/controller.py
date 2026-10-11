@@ -1245,7 +1245,7 @@ class JacuzziController:
         overshoot = self._option_float(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K)
         settings_ok = (
             math.isfinite(margin)
-            and 0.1 <= margin <= 5.0
+            and 0.0 <= margin <= 5.0
             and (math.isfinite(overshoot) and 0.0 <= overshoot <= 2.0)
         )
         peak_block = self._peak_active or (in_peak and not self._early_restored)

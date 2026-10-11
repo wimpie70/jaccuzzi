@@ -580,9 +580,12 @@ class JacuzziHeatLossSensor(RestoreSensor):
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData:
-        """De samples lijst zelf restoren (buiten de state om)."""
+        """De samples-lijsten zelf restoren (buiten de state om)."""
         return RestoredExtraData(
-            {"samples": self._entry.runtime_data.heat_loss_samples}
+            {
+                "samples": self._entry.runtime_data.heat_loss_samples,
+                "gain_samples": self._entry.runtime_data.heat_gain_samples,
+            }
         )
 
     async def async_added_to_hass(self) -> None:
@@ -591,9 +594,13 @@ class JacuzziHeatLossSensor(RestoreSensor):
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
         )
         if (last := await self.async_get_last_extra_data()) is not None:
-            stored = last.as_dict().get("samples")
-            if stored and not self._entry.runtime_data.heat_loss_samples:
-                self._entry.runtime_data.heat_loss_samples = list(stored)
+            stored = last.as_dict()
+            heat_loss = stored.get("samples")
+            if heat_loss and not self._entry.runtime_data.heat_loss_samples:
+                self._entry.runtime_data.heat_loss_samples = list(heat_loss)
+            gain = stored.get("gain_samples")
+            if gain and not self._entry.runtime_data.heat_gain_samples:
+                self._entry.runtime_data.heat_gain_samples = list(gain)
 
     @callback
     def _async_update(self) -> None:
