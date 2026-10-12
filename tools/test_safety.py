@@ -271,7 +271,16 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(37, self.temperatures())
 
     async def test_running_pump_failure_brakes(self):
+        # Een korte pompdip (Gecko spaar-schema) breekt de run niet;
+        # pas als de pomp ook na de herstel-grace uit blijft remmen we.
         self.states["pump"].state = "off"
+        await self.c._async_evaluate()
+        self.assertNotIn(15, self.temperatures())
+        self.assertTrue(self.c.warmtevraag)
+        self.c._since["no_circ"] = (
+            datetime.now(timezone.utc)
+            - timedelta(seconds=self.ns["CIRC_LOSS_GRACE_S"] + 1)
+        )
         await self.c._async_evaluate()
         self.assertIn(15, self.temperatures())
         self.assertFalse(self.c.warmtevraag)
@@ -1015,14 +1024,31 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.calls)
 
     async def test_gecko_circulation_drop_restored_without_long_debounce(self):
+        # De Gecko-pack dropt de pomp af en toe zelf (spaar-schema): de
+        # run mag daar niet aan stuk — herstel wint binnen de grace.
         self.c._run_active = True
         self.states["pump"].state = "off"
         self.c._pump_cmd_at = self.clock.value - 10
         await self.c._async_evaluate()
         self.assertTrue(any(s == "turn_on" and d["entity_id"] == "pump" for _, s, d in self.calls))
-        self.assertIn(15, self.temperatures())
+        self.assertNotIn(15, self.temperatures())
+        self.assertTrue(self.c.warmtevraag)
         self.assertTrue(self.c.pump_by_us)
         self.assertEqual(self.c.heat_setpoint, 37)
+
+    async def test_persistent_circulation_loss_brakes_after_grace(self):
+        # Blijft de pomp ook na herstelpogingen uit, dan is het een echte
+        # flow-storing: na CIRC_LOSS_GRACE_S alsnog remmen.
+        self.c._run_active = True
+        self.states["pump"].state = "off"
+        self.c._since["no_circ"] = (
+            datetime.now(timezone.utc)
+            - timedelta(seconds=self.ns["CIRC_LOSS_GRACE_S"] + 1)
+        )
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertIn(15, self.temperatures())
+        self.assertEqual(self.c._suppress_reason, "geen circulatie")
 
     async def test_gecko_drop_during_cooling_restored(self):
         self.tub(38)

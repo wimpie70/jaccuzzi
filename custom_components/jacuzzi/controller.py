@@ -36,6 +36,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CIRC_LOSS_GRACE_S,
     CONF_JACUZZI_CLIMATE,
     CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
@@ -1414,7 +1415,11 @@ class JacuzziController:
             else "piekblokkade"
             if peak_block
             else "geen circulatie"
-            if not pump_on and compressor_on is True
+            if self._since_true(
+                "no_circ",
+                not pump_on and compressor_on is True,
+                CIRC_LOSS_GRACE_S,
+            )
             else "flow-storing"
             if problem_blocking or self._flow_lockout
             else "stop niet bevestigd"

@@ -122,6 +122,7 @@ DEFAULT_MIX_PULSE_S = 60        # pulsduur — genoeg om lagen te mengen
 
 # Timers (seconds)
 PUMP_RUNON_S = 180       # nadraaitijd pomp
+CIRC_LOSS_GRACE_S = 60   # Gecko dropt de pomp zelf (spaar-schema); herstel wint het van de rem
 PUMP_RESCUE_RETRY_S = 5  # benodigd flow-herstel niet 30 s blokkeren
 GECKO_MAINT_TARGET_C = 18.0  # bekende lage pack-stand als min_temp ontbreekt
 MAINT_PUMP_GRACE_S = 90  # Gecko check-cyclus (~40 s) niet tegenwerken
