@@ -1723,30 +1723,16 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         bewaakt dat het dashboard alleen ids uit ENTITY_OBJECT_IDS
         gebruikt, zodat kaarten niet naar niet-bestaande ids wijzen.
         """
-        import yaml
+        import re
 
-        dash = yaml.safe_load(
-            (ROOT / "dashboard.yaml").read_text(encoding="utf-8")
+        dash = (ROOT / "dashboard.yaml").read_text(encoding="utf-8")
+        found = set(
+            m.group(1)
+            for m in re.finditer(r"\bentity:\s*[a-z_]+\.(jacuzzi_[a-z0-9_]+)", dash)
         )
-        found = set()
-
-        def walk(node):
-            if isinstance(node, dict):
-                for key, val in node.items():
-                    if key == "entity" and isinstance(val, str) and ".jacuzzi_" in val:
-                        found.add(val.split(".", 1)[1])
-                    else:
-                        walk(val)
-            elif isinstance(node, list):
-                for val in node:
-                    walk(val)
-
-        walk(dash)
         canoniek = set(self.ns["ENTITY_OBJECT_IDS"].values())
-        # strip het 'jacuzzi_'-voorvoegsel bij vergelijking niet: object_id
-        # bevat die zelf (sensor.jacuzzi_heat_loss -> jacuzzi_heat_loss)
-        onbekend = sorted(found - {o for o in canoniek})
-        self.assertEqual(onbekend, [])
+        self.assertEqual(sorted(found - canoniek), [])
+        self.assertGreater(len(found), 10)  # sanity: matcht echt wat
 
 
 if __name__ == "__main__":
