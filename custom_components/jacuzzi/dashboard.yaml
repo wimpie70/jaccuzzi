@@ -127,7 +127,7 @@ views:
       grid_options:
         columns: full
       entity: climate.jacuzzi_tub_target
-      name: Kuip-doel (onze thermostaat)
+      name: Jacuzzi-doel (onze thermostaat)
     - type: vertical-stack
       grid_options:
         columns: full
@@ -206,7 +206,7 @@ views:
       grid_options:
         columns: 6
       entity: climate.jaccuzzi_thermostat_1
-      name: Kuip (Gecko)
+      name: Jacuzzi (Gecko)
     - type: thermostat
       grid_options:
         columns: 6
@@ -217,7 +217,7 @@ views:
         columns: full
       cards:
       - type: heading
-        heading: Gecko — kuip
+        heading: Gecko — bediening
         heading_style: title
       - type: custom:button-card
         template: jac_toggle
@@ -268,14 +268,14 @@ views:
         columns: full
       cards:
       - type: heading
-        heading: Gecko — circulatie
+        heading: Gecko — jacuzzi
         heading_style: title
       - type: grid
         columns: 4
         square: false
         cards:
         - type: custom:button-card
-          template: jac_toggle
+          template: jac_badge_toggle
           entity: fan.jaccuzzi_waterfall
           name: Circulatie
           tooltip: >-
@@ -289,13 +289,13 @@ views:
             Aan = de circulatie draait op verzoek van deze
             regeling (geen handmatige of Gecko-cyclus).
         - type: custom:button-card
-          template: jac_toggle
+          template: jac_badge_toggle
           entity: fan.jaccuzzi_pump_1
           name: Mengen 1
           tooltip: >-
             Massagepomp 1 — mengt warme/koude lagen.
         - type: custom:button-card
-          template: jac_toggle
+          template: jac_badge_toggle
           entity: fan.jaccuzzi_pump_2
           name: Mengen 2
           tooltip: >-
@@ -304,7 +304,7 @@ views:
         heading: Poolex — warmtepomp
         heading_style: title
       - type: grid
-        columns: 4
+        columns: 5
         square: false
         cards:
         - type: custom:button-card
@@ -348,7 +348,7 @@ views:
       hours_to_show: 24
       entities:
       - entity: sensor.jacuzzi_tub_temperature
-        name: Kuip
+        name: Jacuzzi
       - entity: sensor.jacuzzi_poolex_inlet
         name: Wisselaar inlaat
       - entity: sensor.pool_heat_pump_outflow_temperature
@@ -570,4 +570,4 @@ views:
       - entity: sensor.pool_heat_pump_temperature_2
         name: Buiten
       - entity: sensor.jacuzzi_tub_temperature
-        name: Kuip
+        name: Jacuzzi

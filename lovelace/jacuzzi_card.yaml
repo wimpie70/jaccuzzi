@@ -43,7 +43,7 @@ cards:
     cards:
     - type: thermostat
       entity: climate.jacuzzi_tub_target
-      name: Kuip-doel (onze thermostaat)
+      name: Jacuzzi-doel (onze thermostaat)
     - type: entities
       show_header_toggle: false
       entities:
@@ -65,12 +65,12 @@ cards:
       cards:
       - type: thermostat
         entity: climate.jaccuzzi_thermostat_1
-        name: Kuip (Gecko)
+        name: Jacuzzi (Gecko)
       - type: thermostat
         entity: climate.pool_heat_pump
         name: Poolex (actuator)
     - type: entities
-      title: Gecko — kuip
+      title: Gecko — bediening
       show_header_toggle: false
       entities:
       - entity: fan.jaccuzzi_waterfall
@@ -88,7 +88,7 @@ cards:
   - type: vertical-stack
     cards:
     - type: glance
-      title: Gecko — circulatie
+      title: Gecko — jacuzzi
       entities:
       - entity: fan.jaccuzzi_waterfall
         name: Circulatie
@@ -116,7 +116,7 @@ cards:
       hours_to_show: 24
       entities:
       - entity: sensor.jacuzzi_tub_temperature
-        name: Kuip
+        name: Jacuzzi
       - entity: sensor.jacuzzi_poolex_inlet
         name: Wisselaar inlaat
       - entity: sensor.pool_heat_pump_outflow_temperature
@@ -217,4 +217,4 @@ cards:
       - entity: sensor.pool_heat_pump_temperature_2
         name: Buiten
       - entity: sensor.jacuzzi_tub_temperature
-        name: Kuip
+        name: Jacuzzi
