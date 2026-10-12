@@ -27,6 +27,7 @@ from .const import (
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
     CONF_TEMP_MARGIN,
+    CONF_WARM_UNTIL,
     CONF_WATERCARE_NORMAL,
     CONF_WATERCARE_PEAK,
     CONF_WATERCARE_SELECT,
@@ -43,6 +44,7 @@ from .const import (
     DEFAULT_PROBLEM_SENSOR,
     DEFAULT_PUMP_FAN,
     DEFAULT_TEMP_MARGIN,
+    DEFAULT_WARM_UNTIL,
     DEFAULT_WATERCARE_NORMAL,
     DEFAULT_WATERCARE_PEAK,
     DEFAULT_WATERCARE_SELECT,
@@ -69,6 +71,7 @@ DEFAULTS = {
     CONF_NOTIFY_SERVICE: DEFAULT_NOTIFY_SERVICE,
     CONF_PEAK_START: DEFAULT_PEAK_START,
     CONF_PEAK_END: DEFAULT_PEAK_END,
+    CONF_WARM_UNTIL: DEFAULT_WARM_UNTIL,
     CONF_WATERCARE_PEAK: DEFAULT_WATERCARE_PEAK,
     CONF_WATERCARE_NORMAL: DEFAULT_WATERCARE_NORMAL,
     CONF_TEMP_MARGIN: DEFAULT_TEMP_MARGIN,
@@ -95,6 +98,9 @@ def _schema(current: dict | None = None) -> vol.Schema:
     )] = selector.TimeSelector()
     data[vol.Required(
         CONF_PEAK_END, default=current.get(CONF_PEAK_END, DEFAULT_PEAK_END)
+    )] = selector.TimeSelector()
+    data[vol.Required(
+        CONF_WARM_UNTIL, default=current.get(CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL)
     )] = selector.TimeSelector()
     data[vol.Optional(
         CONF_WATERCARE_PEAK, default=current.get(CONF_WATERCARE_PEAK, DEFAULT_WATERCARE_PEAK)
@@ -161,7 +167,7 @@ def _normalize_hhmm(val) -> str:
 
 def _normalize(user_input: dict) -> dict:
     """Normalise time fields in the submitted data."""
-    for key in (CONF_PEAK_START, CONF_PEAK_END):
+    for key in (CONF_PEAK_START, CONF_PEAK_END, CONF_WARM_UNTIL):
         user_input[key] = _normalize_hhmm(user_input[key])
     return user_input
 

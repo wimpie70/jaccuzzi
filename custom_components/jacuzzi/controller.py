@@ -51,6 +51,7 @@ from .const import (
     CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    CONF_WARM_UNTIL,
     COOLDOWN_MAX_JETS_S,
     COOLDOWN_MAX_PAUSE_S,
     COOLDOWN_MIN_DROP_K,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_NORMAL_SETPOINT,
     DEFAULT_OVERSHOOT_K,
     DEFAULT_POOLEX_ALWAYS_ON,
+    DEFAULT_WARM_UNTIL,
     DOMAIN,
     EVAL_INTERVAL_S,
     PUMP_RESCUE_RETRY_S,
@@ -170,6 +172,7 @@ class JacuzziController:
         # Gemeten landing bij einde blokkade (kuip vs doel) — terugkoppeling
         # van het doorstook-advies op de werkelijkheid.
         self.peak_landing: dict | None = None
+        self._landing_done = False
         # Alleen de eigen climate/restore bepaalt het kuip-doel. De
         # Poolex is actuator; zijn (vertraagde) echo mag niets adopteren.
         try:
@@ -813,6 +816,12 @@ class JacuzziController:
                 self.hass, self._on_tick, hour=hh, minute=mm, second=0
             )
         )
+        hh, mm = _parse_hhmm(self.conf.get(CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL))
+        self._unsubs.append(
+            async_track_time_change(
+                self.hass, self._on_warm_until, hour=hh, minute=mm, second=0
+            )
+        )
         # Een HA-herstart (o.a. HACS-upgrade) is geen verwijdering: de
         # shutdown mag de actuator dan niet remmen — de opvolger adopteert
         # een lopende run of remt desgevraagd zelf.
@@ -1046,6 +1055,7 @@ class JacuzziController:
         if self._stopped or self.conf.get(CONF_MAINTENANCE):
             return
         _LOGGER.info("Piekblokkade AAN (%s)", self.conf[CONF_PEAK_START])
+        self._landing_done = False
         poolex = self._state("poolex_climate")
         if poolex is None or poolex.state in ("unavailable", "unknown"):
             # _peak_active blijft False -> evaluate probeert het opnieuw
@@ -1087,30 +1097,50 @@ class JacuzziController:
         self._run_active = False
         self._demand_suppressed = True
         self._suppress_reason = "piek-einde"
-        # Landing-check: klopte de doorstook? Positieve delta = ruim gehaald,
-        # negatief = tekort bij einde blokkade.
+        # Geen eerdere landing op 'warm tot' -> piek-einde is de horizon.
+        self._record_landing("piek-einde")
+        ok = await self._set_watercare("watercare_normal") and ok
+        # False -> evaluate roept _on_peak_end de volgende tick opnieuw
+        self._peak_active = not ok
+
+    @callback
+    def _on_warm_until(self, _now) -> None:
+        """Comfort-einde bereikt: leg de landing vast als het blok loopt."""
+        if self._peak_active:
+            self._record_landing("warm-tot")
+
+    def _record_landing(self, moment: str) -> None:
+        """Landing-check: klopte de doorstook op de comfort-horizon?
+
+        Positieve delta = ruim gehaald, negatief = tekort. Eén keer per
+        blokkade: op 'warm tot' als die in de blokkade valt, anders op
+        piek-einde.
+        """
+        if self._landing_done:
+            return
         jacuzzi = self._state("jacuzzi_climate")
         tub_now = (
             _attr_float(jacuzzi, "current_temperature", float("nan"))
             if jacuzzi
             else float("nan")
         )
-        if math.isfinite(tub_now):
-            self.peak_landing = {
-                "at": dt_util.now().isoformat(timespec="minutes"),
-                "tub_c": round(tub_now, 1),
-                "target_c": self._heat_setpoint,
-                "delta_k": round(tub_now - self._heat_setpoint, 1),
-            }
-            _LOGGER.info(
-                "Landing piek-einde: kuip %.1f °C vs doel %.1f (Δ %+.1f K)",
-                tub_now,
-                self._heat_setpoint,
-                self.peak_landing["delta_k"],
-            )
-        ok = await self._set_watercare("watercare_normal") and ok
-        # False -> evaluate roept _on_peak_end de volgende tick opnieuw
-        self._peak_active = not ok
+        if not math.isfinite(tub_now):
+            return
+        self._landing_done = True
+        self.peak_landing = {
+            "at": dt_util.now().isoformat(timespec="minutes"),
+            "moment": moment,
+            "tub_c": round(tub_now, 1),
+            "target_c": self._heat_setpoint,
+            "delta_k": round(tub_now - self._heat_setpoint, 1),
+        }
+        _LOGGER.info(
+            "Landing %s: kuip %.1f °C vs doel %.1f (Δ %+.1f K)",
+            moment,
+            tub_now,
+            self._heat_setpoint,
+            self.peak_landing["delta_k"],
+        )
 
     # --- main evaluation -----------------------------------------------
 

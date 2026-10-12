@@ -134,7 +134,7 @@
         "name": "Overshoot advice"
       },
       "verwacht_piek_einde": {
-        "name": "Forecast at peak end"
+        "name": "Forecast (warm until)"
       }
     },
     "switch": {
@@ -180,6 +180,9 @@
       },
       "peak_end": {
         "name": "Peak end"
+      },
+      "warm_until": {
+        "name": "Warm until"
       }
     },
     "climate": {

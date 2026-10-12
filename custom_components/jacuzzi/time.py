@@ -18,8 +18,10 @@ from .const import (
     ENTITY_OBJECT_IDS,
     CONF_PEAK_END,
     CONF_PEAK_START,
+    CONF_WARM_UNTIL,
     DEFAULT_PEAK_END,
     DEFAULT_PEAK_START,
+    DEFAULT_WARM_UNTIL,
     DOMAIN,
 )
 
@@ -37,6 +39,13 @@ async def async_setup_entry(
             ),
             JacuzziPeakTime(
                 entry, CONF_PEAK_END, "peak_end", DEFAULT_PEAK_END, "mdi:clock-end"
+            ),
+            JacuzziPeakTime(
+                entry,
+                CONF_WARM_UNTIL,
+                "warm_until",
+                DEFAULT_WARM_UNTIL,
+                "mdi:clock-check",
             ),
         ]
     )

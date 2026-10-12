@@ -511,6 +511,36 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(landing["tub_c"], 36.4)
         self.assertEqual(landing["target_c"], 37)
         self.assertEqual(landing["delta_k"], -0.6)
+        self.assertEqual(landing["moment"], "piek-einde")
+
+    async def test_warm_until_records_landing_inside_block(self):
+        # 'Warm tot' valt in de blokkade -> de landing hoort op het
+        # comfort-einde, niet pas op piek-einde.
+        self.c._peak_active = True
+        self.tub(36.8)
+        self.c._on_warm_until(None)
+        landing = self.c.peak_landing
+        self.assertIsNotNone(landing)
+        self.assertEqual(landing["moment"], "warm-tot")
+        self.assertEqual(landing["delta_k"], -0.2)
+        # Piek-einde later mag die eerste meting niet overschrijven.
+        self.tub(33.0)
+        await self.c._on_peak_end(None)
+        self.assertEqual(self.c.peak_landing["tub_c"], 36.8)
+
+    async def test_warm_until_outside_block_records_nothing(self):
+        # Geen actieve blokkade op 'warm tot' -> geen landing; die
+        # valt dan op piek-einde.
+        self.c._peak_active = False
+        self.tub(36.8)
+        self.c._on_warm_until(None)
+        self.assertIsNone(self.c.peak_landing)
+        # Nieuwe blokkade reset de eenmalige landing.
+        self.c._landing_done = True
+        self.tub(33.5)
+        await self.c._on_peak_start(None)
+        await self.c._on_peak_end(None)
+        self.assertEqual(self.c.peak_landing["tub_c"], 33.5)
 
     def test_peak_window_over_midnight(self):
         # De echte _in_peak_window (fixture stubt hem); venster 22:00-06:00.

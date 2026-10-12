@@ -11,6 +11,7 @@ CONF_WATERCARE_SELECT = "watercare_select"
 CONF_NOTIFY_SERVICE = "notify_service"
 CONF_PEAK_START = "peak_start"
 CONF_PEAK_END = "peak_end"
+CONF_WARM_UNTIL = "warm_until"
 CONF_WATERCARE_PEAK = "watercare_peak"
 CONF_WATERCARE_NORMAL = "watercare_normal"
 CONF_TEMP_MARGIN = "temp_margin"
@@ -40,6 +41,7 @@ DEFAULT_WATERCARE_SELECT = "select.jaccuzzi_watercare_mode"
 DEFAULT_NOTIFY_SERVICE = "notify"
 DEFAULT_PEAK_START = "16:30"
 DEFAULT_PEAK_END = "20:00"
+DEFAULT_WARM_UNTIL = "20:00"
 # multi-word opties ('Super Savings') breken in de geckoal-integratie:
 # geckolib accepteert alleen UPPER_SNAKE intern. Single-word modes
 # (Away/Savings/Weekender) werken wel.
@@ -200,6 +202,7 @@ ENTITY_OBJECT_IDS = {
     # time
     "peak_start": "jacuzzi_peak_start",
     "peak_end": "jacuzzi_peak_end",
+    "warm_until": "jacuzzi_warm_until",
 }
 HEAT_LOSS_SAMPLES = 10     # bewaar de laatste N metingen
 HEAT_GAIN_SAMPLES = 5      # bewaar de laatste N stook-snelheden

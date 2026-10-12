@@ -110,10 +110,11 @@ views:
         **Advies**: "Advies doorstook" simuleert de vraag-cyclus (stoken → koelen →
         volgende run) met de huidige doorstook en de geleerde stook-/afkoelsnelheid
         tot de piekblokkade — en rekent welke doorstook de laatste stop vóór de
-        blokkade nodig heeft om om piek-einde nog op doel uit te komen. Attributen
-        tonen de gesimuleerde laatste stop, de bulk bij blokkade-start en de
-        landing op piek-einde met de huidige instelling.
-        "Verwachte temp piek-einde" toont dezelfde voorspelling in °C. Beide
+        blokkade nodig heeft om op "Warm tot" nog op doel uit te komen (daarna
+        mag de kuip afkoelen; eindigt de blokkade eerder, dan geldt piek-einde).
+        Attributen tonen de gesimuleerde laatste stop, de bulk bij blokkade-start
+        en de landing op het comfort-einde met de huidige instelling.
+        "Verwachte temp" toont dezelfde voorspelling in °C. Beide
         adviseren alleen; zelf instellen in "Doorstook".
 
         **Onderhoud**: zet alle automatiseringen uit — Poolex off, watercare op standby/away,
@@ -176,25 +177,27 @@ views:
         name: Doorstook (stop boven doel)
         tooltip: >-
           Hoeveel graden boven het doel een run doorstookt —
-          compenseert de afkoeling tot aan piek-einde. Zie "Advies
+          compenseert de afkoeling tot "Warm tot". Zie "Advies
           doorstook" voor de berekende waarde.
       - type: custom:button-card
         template: jac_row
         entity: sensor.jacuzzi_overshoot_advice
-        name: Advies doorstook (tot piek-einde)
+        name: Advies doorstook (tot warm-tot)
         tooltip: >-
           Simuleert stoken→koelen→volgende run met de geleerde
           stook-/afkoelsnelheid tot de piekblokkade, en rekent welke
-          doorstook nodig is om om piek-einde op doel te landen. Alleen
-          advies — zelf instellen in "Doorstook".
+          doorstook nodig is om op "Warm tot" op doel te landen
+          (of piek-einde als dat eerder valt). Alleen advies — zelf
+          instellen in "Doorstook".
       - type: custom:button-card
         template: jac_row
         entity: sensor.jacuzzi_forecast_at_peak_end
-        name: Verwachte temp piek-einde
+        name: Verwachte temp (warm-tot)
         tooltip: >-
-          Voorspelde kuip-temperatuur bij het einde van de
-          piekblokkade. Attributen tonen de gemeten landing (werkelijk
-          vs. doel) zodra een blokkade eindigde.
+          Voorspelde kuip-temperatuur op "Warm tot" — einde van de
+          gebruiksavond (of piek-einde als dat eerder valt).
+          Attributen tonen de gemeten landing (werkelijk vs. doel)
+          zodra het comfort-einde passeerde.
       - type: custom:button-card
         template: jac_row
         entity: sensor.jacuzzi_measurement_bias
@@ -412,7 +415,16 @@ views:
         name: Einde
         tooltip: >-
           Einde van de piekblokkade — daarna mag weer verwarmd
-          worden; de landing (werkelijke temp) wordt dan vastgelegd.
+          worden.
+      - type: custom:button-card
+        template: jac_row
+        entity: time.jacuzzi_warm_until
+        name: Warm tot
+        tooltip: >-
+          Tot hoe laat de kuip op doel moet blijven — einde van de
+          gebruiksavond. Doorstook-advies, voorspelling en de
+          landing-check rekenen tot dit tijdstip (of piek-einde als
+          dat eerder valt); daarna mag de kuip afkoelen.
       - type: custom:button-card
         template: jac_row
         entity: number.jacuzzi_solar_surplus_threshold

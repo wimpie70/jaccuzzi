@@ -34,12 +34,14 @@ from .const import (
     CONF_POOLEX_POWER_SENSOR,
     CONF_PUMP_FAN,
     CONF_TEMP_MARGIN,
+    CONF_WARM_UNTIL,
     DEFAULT_AMBIENT_SENSOR,
     DEFAULT_OVERSHOOT_K,
     DEFAULT_PEAK_END,
     DEFAULT_PEAK_START,
     DEFAULT_POOLEX_MAX_W,
     DEFAULT_TEMP_MARGIN,
+    DEFAULT_WARM_UNTIL,
     DOMAIN,
     MAX_TUB_C,
     POOLEX_OUTLET_SENSOR,
@@ -1102,8 +1104,9 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
     De vraag-cyclus (vraag -> stoken -> stop -> afkoelen) wordt met
     de huidige doorstook gesimuleerd tot de blokkade: zo valt de
     echte laatste stop. Advies = gemeten W/K x huidige ΔT x uren
-    vanaf die laatste stop tot piek-einde — precies de doorstook
-    die die stop had moeten halen. Zonder geleerde stooksnelheid
+    vanaf die laatste stop tot de horizon ('warm tot', of piek-einde
+    als die eerder valt) — precies de doorstook die die stop had
+    moeten halen. Zonder geleerde stooksnelheid
     valt hij terug op het verlies over de blokkade alleen.
     Begrensd zodat doel + advies nooit boven MAX_TUB_C uitkomt.
     Zonder afkoelingsmeting is er geen advies.
@@ -1142,7 +1145,22 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
         if not in_block:
             start += timedelta(days=1)
         end = start + timedelta(hours=block_h)
-        hours_end = (end - now).total_seconds() / 3600
+        w_h, w_m = _parse_hhmm(conf.get(CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL))
+        warm_end = start.replace(hour=w_h, minute=w_m)
+        if warm_end < start:
+            warm_end += timedelta(days=1)
+        # De kuip hoeft maar tot 'warm tot' warm te blijven — daarna
+        # mag hij gerust afkoelen. Eindigt de blokkade eerder, dan
+        # hervat de warmtevraag daar vanzelf.
+        horizon = min(end, warm_end)
+        horizon_kind = "warm_tot" if warm_end <= end else "piek_einde"
+        coast_block_h = (horizon - start).total_seconds() / 3600
+        next_horizon = horizon
+        if next_horizon <= now:
+            # Comfort-grens van deze blokkade al voorbij — de resterende
+            # afkoeling doet er niet toe; rapporteer de volgende horizon.
+            next_horizon += timedelta(days=1)
+        hours_end = (next_horizon - now).total_seconds() / 3600
         hours_start = max((start - now).total_seconds() / 3600, 0.0)
         rate = self._cooling_rate_k_h(samples, tub, amb)
         doel = self._controller.heat_setpoint
@@ -1196,14 +1214,14 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
                         b, t = doel - marge, t_low
                         demand = True
             b_start = b
-            end_b = b - rate * (end - t).total_seconds() / 3600
+            end_b = b - rate * (horizon - t).total_seconds() / 3600
         # De doorstook die de laatste stop had moeten halen: verlies
-        # van die stop tot piek-einde. Geen run meer voor de blokkade
+        # van die stop tot de horizon. Geen run meer voor de blokkade
         # -> de huidige warmte moet het hele traject dragen.
         coast_h = (
-            (end - last_stop).total_seconds() / 3600
+            (horizon - last_stop).total_seconds() / 3600
             if last_stop is not None
-            else (block_h if in_block else hours_end)
+            else (coast_block_h if in_block else hours_end)
         )
         advies = min(max(rate * coast_h, 0.0), MAX_TUB_C - doel)
         return {
@@ -1219,8 +1237,10 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
             "runs": runs if heat_rate else None,
             "b_start": round(b_start, 1) if b_start is not None else None,
             "end_b": round(end_b, 1) if end_b is not None else None,
+            "horizon_kind": horizon_kind,
             "peak_start": conf.get(CONF_PEAK_START, DEFAULT_PEAK_START),
             "peak_end": conf.get(CONF_PEAK_END, DEFAULT_PEAK_END),
+            "warm_until": conf.get(CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL),
             "at": samples[-1]["at"],
         }
 
@@ -1241,16 +1261,18 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
             "afkoeling_k_per_u": advies["rate"],
             "blokkade_uren": advies["block_h"],
             "verlies_vanaf_nu_k": advies["loss_now"],
-            "uren_tot_piek_einde": advies["hours_end"],
+            "uren_tot_horizon": advies["hours_end"],
             "uren_tot_piek_start": advies["hours_start"],
             "stijgsnelheid_k_per_u": advies["heat_rate"],
             "laatste_stop_gesimuleerd": advies["last_stop"],
             "runs_voor_blokkade": advies["runs"],
             "bulk_bij_blokkade_start": advies["b_start"],
-            "verwacht_piek_einde_huidig": advies["end_b"],
+            "verwacht_bij_horizon_huidig": advies["end_b"],
             "in_blokkade": advies["in_block"],
+            "horizon": advies["horizon_kind"],
             "piek_start": advies["peak_start"],
             "piek_einde": advies["peak_end"],
+            "warm_tot": advies["warm_until"],
             "gebaseerd_op_meting_van": advies["at"],
             "huidige_doorstook_k": conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K),
             "advies_stopgrens_c": round(
@@ -1260,11 +1282,13 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
 
 
 class JacuzziPeakEndForecastSensor(_ControllerSensor):
-    """Voorspelde kuip-temp op het eerstvolgende piek-einde.
+    """Voorspelde kuip-temp op het eerstvolgende comfort-einde.
 
-    Afkoeling = gemeten W/K x huidige (kuip - buiten); W/K schaalt
-    mee naar winterse nachten. Zonder afkoelingsmeting of sensor
-    is er geen voorspelling — de sensor toont dan niets.
+    De horizon is 'warm tot' (einde gebruiksavond), of piek-einde als
+    die eerder valt — daarna hervat de warmtevraag toch. Afkoeling =
+    gemeten W/K x huidige (kuip - buiten); W/K schaalt mee naar
+    winterse nachten. Zonder afkoelingsmeting of sensor is er geen
+    voorspelling — de sensor toont dan niets.
     """
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -1286,21 +1310,25 @@ class JacuzziPeakEndForecastSensor(_ControllerSensor):
         tub, amb = self._tub_ambient()
         if tub is None or amb is None:
             return None
-        hours = _hours_until(conf, CONF_PEAK_END, DEFAULT_PEAK_END)
+        warm_h = _hours_until(conf, CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL)
+        peak_h = _hours_until(conf, CONF_PEAK_END, DEFAULT_PEAK_END)
+        hours = min(warm_h, peak_h)
         rate = self._cooling_rate_k_h(samples, tub, amb)
         return {
             "predicted": round(tub - rate * hours, 1),
             "hours": round(hours, 1),
+            "horizon_kind": "warm_tot" if warm_h <= peak_h else "piek_einde",
             "rate": round(rate, 2),
             "tub": tub,
             "amb": amb,
             "at": samples[-1]["at"],
             "peak_end": conf.get(CONF_PEAK_END, DEFAULT_PEAK_END),
+            "warm_until": conf.get(CONF_WARM_UNTIL, DEFAULT_WARM_UNTIL),
         }
 
     @property
     def native_value(self) -> float | None:
-        """Voorspelde bulk-temperatuur op piek-einde."""
+        """Voorspelde bulk-temperatuur op het comfort-einde."""
         forecast = self._forecast()
         return forecast["predicted"] if forecast else None
 
@@ -1310,7 +1338,9 @@ class JacuzziPeakEndForecastSensor(_ControllerSensor):
         forecast = self._forecast()
         attrs = (
             {
-                "uren_tot_piek_einde": forecast["hours"],
+                "uren_tot_horizon": forecast["hours"],
+                "horizon": forecast["horizon_kind"],
+                "warm_tot": forecast["warm_until"],
                 "piek_einde": forecast["peak_end"],
                 "afkoeling_k_per_u": forecast["rate"],
                 "kuip_nu_c": forecast["tub"],
