@@ -1,4 +1,45 @@
 title: Jacuzzi
+button_card_templates:
+  jac_row:
+    show_icon: true
+    show_state: true
+    layout: icon_name_state
+    tap_action:
+      action: more-info
+    styles:
+      card:
+        - padding: 12px 16px
+        - border-radius: 12px
+  jac_toggle:
+    show_icon: true
+    show_state: true
+    layout: icon_name_state
+    tap_action:
+      action: toggle
+    styles:
+      card:
+        - padding: 12px 16px
+        - border-radius: 12px
+  jac_badge:
+    show_icon: true
+    show_name: true
+    show_state: true
+    tap_action:
+      action: more-info
+    styles:
+      card:
+        - padding: 10px
+        - border-radius: 12px
+  jac_badge_toggle:
+    show_icon: true
+    show_name: true
+    show_state: true
+    tap_action:
+      action: toggle
+    styles:
+      card:
+        - padding: 10px
+        - border-radius: 12px
 views:
 - title: Jacuzzi
   path: jacuzzi
@@ -65,29 +106,80 @@ views:
         columns: full
       entity: climate.jacuzzi_tub_target
       name: Kuip-doel (onze thermostaat)
-    - type: entities
+    - type: vertical-stack
       grid_options:
         columns: full
-      show_header_toggle: false
-      entities:
-      - entity: switch.jacuzzi_maintenance
+      cards:
+      - type: custom:button-card
+        template: jac_toggle
+        entity: switch.jacuzzi_maintenance
         name: Onderhoudsmodus
-      - entity: sensor.jacuzzi_control_status
+        tooltip: >-
+          Zet alle automatiseringen uit (Poolex off, watercare
+          standby/away, pompen uit) voor onderhoud. De oude standen worden
+          bij uitschakelen teruggezet.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_control_status
         name: Regelstatus
-      - entity: sensor.jacuzzi_demand_source
+        tooltip: >-
+          Wat de regeling nu doet: idle, verwarmen, meng-check,
+          piekblokkade, of geblokkeerd — met de reden.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_demand_source
         name: Meetbron vraag
-      - entity: binary_sensor.jacuzzi_heat_demand
+        tooltip: >-
+          Welke meting de warmtevraag bepaalt: kuip-sensor,
+          meng-check, of geen (meting onbetrouwbaar = veilig geblokkeerd).
+      - type: custom:button-card
+        template: jac_row
+        entity: binary_sensor.jacuzzi_heat_demand
         name: Warmtevraag actief
-      - entity: number.jacuzzi_heat_demand_margin
+        tooltip: >-
+          Aan = de kuip is kouder dan doel − vraag-marge en de
+          regeling wil warmte. Wordt alleen uitgevoerd als er geen
+          blokkade is.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_heat_demand_margin
         name: Vraag-marge (start onder doel)
-      - entity: number.jacuzzi_heat_overshoot_above_target
+        tooltip: >-
+          Hoeveel graden onder het doel de warmtevraag start.
+          0 = meteen stoken zodra de kuip onder doel zakt. Grotere marge =
+          minder vaak stoken, koudere kuip.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_heat_overshoot_above_target
         name: Doorstook (stop boven doel)
-      - entity: sensor.jacuzzi_overshoot_advice
+        tooltip: >-
+          Hoeveel graden boven het doel een run doorstookt —
+          compenseert de afkoeling tot aan piek-einde. Zie "Advies
+          doorstook" voor de berekende waarde.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_overshoot_advice
         name: Advies doorstook (tot piek-einde)
-      - entity: sensor.jacuzzi_forecast_at_peak_end
+        tooltip: >-
+          Simuleert stoken→koelen→volgende run met de geleerde
+          stook-/afkoelsnelheid tot de piekblokkade, en rekent welke
+          doorstook nodig is om om piek-einde op doel te landen. Alleen
+          advies — zelf instellen in "Doorstook".
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_forecast_at_peak_end
         name: Verwachte temp piek-einde
-      - entity: sensor.jacuzzi_measurement_bias
+        tooltip: >-
+          Voorspelde kuip-temperatuur bij het einde van de
+          piekblokkade. Attributen tonen de gemeten landing (werkelijk
+          vs. doel) zodra een blokkade eindigde.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_measurement_bias
         name: Meetafwijking kuipsensor (geleerd, K)
+        tooltip: >-
+          Geleerde afwijking tussen kuip-sensor en echte
+          bulk-temperatuur, berekend uit meng-checks.
     - type: thermostat
       grid_options:
         columns: 6
@@ -98,55 +190,131 @@ views:
         columns: 6
       entity: climate.pool_heat_pump
       name: Poolex (actuator)
-    - type: entities
+    - type: vertical-stack
       grid_options:
         columns: full
-      title: Gecko — kuip
-      show_header_toggle: false
-      entities:
-      - entity: fan.jaccuzzi_waterfall
+      cards:
+      - type: heading
+        heading: Gecko — kuip
+        heading_style: title
+      - type: custom:button-card
+        template: jac_toggle
+        entity: fan.jaccuzzi_waterfall
         name: Circulatiepomp
-      - entity: fan.jaccuzzi_pump_1
+        tooltip: >-
+          HA zet deze aan voor verwarming, meng-check en koeling.
+          Klik = handmatig schakelen.
+      - type: custom:button-card
+        template: jac_toggle
+        entity: fan.jaccuzzi_pump_1
         name: Massagepomp 1
-      - entity: fan.jaccuzzi_pump_2
+        tooltip: >-
+          Wordt gebruikt voor meng-puls en meng-check; Gecko stuurt
+          hem ook zelf aan (filtratie/gebruik).
+      - type: custom:button-card
+        template: jac_toggle
+        entity: fan.jaccuzzi_pump_2
         name: Massagepomp 2
-      - entity: light.jaccuzzi_light_1
+        tooltip: >-
+          Wordt gebruikt voor meng-puls en meng-check; Gecko stuurt
+          hem ook zelf aan (filtratie/gebruik).
+      - type: custom:button-card
+        template: jac_toggle
+        entity: light.jaccuzzi_light_1
         name: Verlichting
-      - entity: select.jaccuzzi_watercare_mode
+        tooltip: >-
+          Kuipverlichting.
+      - type: custom:button-card
+        template: jac_row
+        entity: select.jaccuzzi_watercare_mode
         name: Watercare
-      - entity: binary_sensor.jaccuzzi_spa_status
+        tooltip: >-
+          Gecko watercare-stand. Tijdens de piekblokkade zet de
+          regeling deze op de piek-stand (Super Savings); daarna weer
+          terug.
+      - type: custom:button-card
+        template: jac_row
+        entity: binary_sensor.jaccuzzi_spa_status
         name: Spa status
+        tooltip: >-
+          Algemene status van het Gecko-pack (aan/standby/fout).
   - type: grid
     title: Status
     cards:
-    - type: glance
+    - type: vertical-stack
       grid_options:
         columns: full
-      title: Gecko — circulatie
-      entities:
-      - entity: fan.jaccuzzi_waterfall
-        name: Circulatie
-      - entity: binary_sensor.jacuzzi_pump_started_by_ha
-        name: Pomp door HA
-      - entity: fan.jaccuzzi_pump_1
-        name: Mengen 1
-      - entity: fan.jaccuzzi_pump_2
-        name: Mengen 2
-    - type: glance
-      grid_options:
-        columns: full
-      title: Poolex — warmtepomp
-      entities:
-      - entity: switch.jacuzzi_poolex_power
-        name: Warmte toestaan
-      - entity: binary_sensor.jacuzzi_heat_demand
-        name: Warmtevraag
-      - entity: binary_sensor.jacuzzi_compressor_active
-        name: Compressor
-      - entity: sensor.jacuzzi_poolex_compressor
-        name: Duty %
-      - entity: binary_sensor.pool_heat_pump_problem
-        name: Fault
+      cards:
+      - type: heading
+        heading: Gecko — circulatie
+        heading_style: title
+      - type: horizontal-stack
+        cards:
+        - type: custom:button-card
+          template: jac_toggle
+          entity: fan.jaccuzzi_waterfall
+          name: Circulatie
+          tooltip: >-
+            Circulatiepomp — verplaatst water door wisselaar en
+            kuip.
+        - type: custom:button-card
+          template: jac_badge
+          entity: binary_sensor.jacuzzi_pump_started_by_ha
+          name: Pomp door HA
+          tooltip: >-
+            Aan = de circulatie draait op verzoek van deze
+            regeling (geen handmatige of Gecko-cyclus).
+        - type: custom:button-card
+          template: jac_toggle
+          entity: fan.jaccuzzi_pump_1
+          name: Mengen 1
+          tooltip: >-
+            Massagepomp 1 — mengt warme/koude lagen.
+        - type: custom:button-card
+          template: jac_toggle
+          entity: fan.jaccuzzi_pump_2
+          name: Mengen 2
+          tooltip: >-
+            Massagepomp 2 — mengt warme/koude lagen.
+      - type: heading
+        heading: Poolex — warmtepomp
+        heading_style: title
+      - type: horizontal-stack
+        cards:
+        - type: custom:button-card
+          template: jac_badge_toggle
+          entity: switch.jacuzzi_poolex_power
+          name: Warmte toestaan
+          tooltip: >-
+            Uit = de regeling mag niet verwarmen (Poolex-setpoint
+            15 °C), ongeacht de warmtevraag.
+        - type: custom:button-card
+          template: jac_badge
+          entity: binary_sensor.jacuzzi_heat_demand
+          name: Warmtevraag
+          tooltip: >-
+            Aan = regeling wil warmte (kuip onder doel − marge).
+        - type: custom:button-card
+          template: jac_badge
+          entity: binary_sensor.jacuzzi_compressor_active
+          name: Compressor
+          tooltip: >-
+            Aan = compressor draait echt (duty > 0 of actief
+            gemeld). Houdt rekening met naspin.
+        - type: custom:button-card
+          template: jac_badge
+          entity: sensor.jacuzzi_poolex_compressor
+          name: Duty %
+          tooltip: >-
+            Compressor-vermogen zoals de Poolex rapporteert
+            (0–100%).
+        - type: custom:button-card
+          template: jac_badge
+          entity: binary_sensor.pool_heat_pump_problem
+          name: Fault
+          tooltip: >-
+            Storingsindicatie van de Poolex, bijv. d1
+            flow-beveiliging.
     - type: history-graph
       grid_options:
         columns: full
@@ -198,73 +366,175 @@ views:
   - type: grid
     title: Instellingen
     cards:
-    - type: entities
+    - type: vertical-stack
       grid_options:
         columns: full
-      title: Piekblokkade
-      entities:
-      - entity: time.jacuzzi_peak_start
+      cards:
+      - type: heading
+        heading: Piekblokkade
+        heading_style: title
+      - type: custom:button-card
+        template: jac_row
+        entity: time.jacuzzi_peak_start
         name: Start
-      - entity: time.jacuzzi_peak_end
+        tooltip: >-
+          Begin van de piekblokkade — tussen start en einde wordt
+          niet verwarmd (Poolex op 15 °C, Watercare op piek-stand).
+      - type: custom:button-card
+        template: jac_row
+        entity: time.jacuzzi_peak_end
         name: Einde
-      - entity: number.jacuzzi_solar_surplus_threshold
+        tooltip: >-
+          Einde van de piekblokkade — daarna mag weer verwarmd
+          worden; de landing (werkelijke temp) wordt dan vastgelegd.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_solar_surplus_threshold
         name: PV-drempel
-      - entity: select.jaccuzzi_watercare_mode
+        tooltip: >-
+          PV-overschot (W) dat gedurende 10 min aanhoudt → de
+          piekblokkade eindigt vervroegd zodat gratis zonnewarmte wordt
+          benut.
+      - type: custom:button-card
+        template: jac_row
+        entity: select.jaccuzzi_watercare_mode
         name: Watercare (piek = Super Savings)
-    - type: entities
-      grid_options:
-        columns: full
-      title: Meng-puls
-      show_header_toggle: false
-      entities:
-      - entity: switch.jacuzzi_mixing_pulse
+        tooltip: >-
+          Gecko watercare-stand — tijdens de blokkade gezet op de
+          piek-stand; daarna hersteld.
+      - type: heading
+        heading: Meng-puls
+        heading_style: title
+      - type: custom:button-card
+        template: jac_toggle
+        entity: switch.jacuzzi_mixing_pulse
         name: Actief
-      - entity: number.jacuzzi_mixing_interval
+        tooltip: >-
+          Elke interval kort een massagepomp aan tijdens verwarmen
+          — mengt warme/koude lagen zodat de sensoren de echte
+          bulk-temperatuur zien.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_mixing_interval
         name: Interval
-      - entity: number.jacuzzi_mixing_pulse_duration
+        tooltip: >-
+          Tijd tussen meng-pulsen tijdens verwarmen.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_mixing_pulse_duration
         name: Pulsduur
-    - type: entities
-      grid_options:
-        columns: full
-      title: Poolex — sturing
-      show_header_toggle: false
-      entities:
-      - entity: select.pool_heat_pump_auxiliary_heating
+        tooltip: >-
+          Duur van één meng-puls in seconden.
+      - type: heading
+        heading: Poolex — sturing
+        heading_style: title
+      - type: custom:button-card
+        template: jac_row
+        entity: select.pool_heat_pump_auxiliary_heating
         name: Bijstook (C4)
-      - entity: select.pool_heat_pump_circulation_pump
+        tooltip: >-
+          Poolex-instelling C4 — bijstookgedrag van de unit zelf.
+      - type: custom:button-card
+        template: jac_row
+        entity: select.pool_heat_pump_circulation_pump
         name: Pomprelais (C8)
-      - entity: switch.pool_heat_pump_defrost
+        tooltip: >-
+          Poolex-instelling C8 — intern circulatiepomprelais.
+      - type: custom:button-card
+        template: jac_toggle
+        entity: switch.pool_heat_pump_defrost
         name: Defrost (handmatig)
-      - entity: binary_sensor.pool_heat_pump_defrost
+        tooltip: >-
+          Handmatig een defrost-cyclus starten op de verdamper.
+      - type: custom:button-card
+        template: jac_row
+        entity: binary_sensor.pool_heat_pump_defrost
         name: Defrost
-      - entity: binary_sensor.jacuzzi_element_heating
+        tooltip: >-
+          Aan = defrost-cyclus actief (ventilator uit, uitlaat-temp
+          dip) — normaal bij koude buitenlucht.
+      - type: custom:button-card
+        template: jac_row
+        entity: binary_sensor.jacuzzi_element_heating
         name: Element actief
-      - entity: number.pool_heat_pump_sampling_interval
+        tooltip: >-
+          Aan = het interne elektrische element van de Poolex
+          verwarmt mee.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.pool_heat_pump_sampling_interval
         name: Meetinterval (C9)
-      - entity: number.jacuzzi_inlet_sensor_compensation
+        tooltip: >-
+          Poolex-instelling C9 — meet-/regelinterval van de unit.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_inlet_sensor_compensation
         name: Inlaatcompensatie (K/K)
-      - entity: switch.jacuzzi_poolex_always_on
+        tooltip: >-
+          Correctiefactor voor de inlaat-sensor, die structureel
+          te laag leest (slechte plaatsing/buitentemperatuur). Schat de
+          echte bulk-temperatuur — wordt nooit gebruikt om warmte te
+          starten.
+      - type: custom:button-card
+        template: jac_toggle
+        entity: switch.jacuzzi_poolex_always_on
         name: Altijd aan (vorstbeveiliging)
-    - type: entities
-      grid_options:
-        columns: full
-      title: Verbruik
-      show_header_toggle: false
-      entities:
-      - entity: sensor.jacuzzi_poolex_power_estimate
+        tooltip: >-
+          Houdt de Poolex op heat i.p.v. hvac off — de
+          vorstbeveiliging van de unit werkt alleen in standby. Uit alleen
+          bij onderhoud/winterstalling.
+      - type: heading
+        heading: Verbruik
+        heading_style: title
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_poolex_power_estimate
         name: Poolex vermogen (geschat)
-      - entity: sensor.jacuzzi_heating_power
+        tooltip: >-
+          Geschat opgenomen elektrisch vermogen, afgeleid van
+          compressor-duty en max-vermogen.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_heating_power
         name: Thermisch vermogen (geschat)
-      - entity: sensor.jacuzzi_cop_estimate
+        tooltip: >-
+          Geschat afgegeven warmtevermogen uit de stook-snelheid
+          van de kuip (K/u × watermassa).
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_cop_estimate
         name: COP (geschat)
-      - entity: number.jacuzzi_poolex_max_watts
+        tooltip: >-
+          COP = thermisch / elektrisch vermogen. Schatting —
+          afhankelijk van buitentemperatuur en meting.
+      - type: custom:button-card
+        template: jac_row
+        entity: number.jacuzzi_poolex_max_watts
         name: Max opgenomen vermogen
-      - entity: sensor.jacuzzi_poolex_energy
+        tooltip: >-
+          Nominaal maximaal elektrisch vermogen van de Poolex —
+          basis voor de vermogen-/COP-schattingen.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_poolex_energy
         name: Poolex (kWh)
-      - entity: sensor.jacuzzi_energy
+        tooltip: >-
+          Geschat elektrisch verbruik van de Poolex (geïntegreerd
+          vermogen).
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_energy
         name: Jacuzzi (kWh)
-      - entity: sensor.jacuzzi_heat_loss
+        tooltip: >-
+          Geschatte warmte-energie die aan de kuip is geleverd.
+      - type: custom:button-card
+        template: jac_row
+        entity: sensor.jacuzzi_heat_loss
         name: Warmteverlies (W/K)
+        tooltip: >-
+          Gemeten warmteverlies per graad verschil met buiten —
+          basis voor afkoelvoorspellingen. Attributen: aantal metingen en
+          het lopende meetvenster (open/uren/daling/blokkade).
     - type: history-graph
       title: Warmteverlies (W/K)
       hours_to_show: 168

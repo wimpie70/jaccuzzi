@@ -1,3 +1,7 @@
+# Vanilla-variant zonder custom-kaarten (geen hover-tooltips).
+# Het shipped dashboard (custom_components/jacuzzi/dashboard.yaml) gebruikt
+# custom:button-card voor tooltips; dit bestand is de fallback-voorbeeldkaart.
+# Let op: minder actueel — het shipped dashboard is leidend.
 type: vertical-stack
 cards:
 - type: markdown

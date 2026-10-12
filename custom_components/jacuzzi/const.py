@@ -148,5 +148,6 @@ COOLDOWN_MIN_H = 3.0       # minimale meetduur voor een geldig venster
 COOLDOWN_MIN_DROP_K = 0.5  # minimale daling om als meting te tellen
 COOLDOWN_MAX_PAUSE_S = 1800  # korte sensoruitval pauzeert; langer sluit
 COOLDOWN_MAX_JETS_S = 1200   # jets >20 min = gebruik, geen meetvenster
+WATERCARE_VERIFY_S = 8.0     # zo lang pollen of de watercare-stand landt
 HEAT_LOSS_SAMPLES = 10     # bewaar de laatste N metingen
 HEAT_GAIN_SAMPLES = 5      # bewaar de laatste N stook-snelheden

@@ -127,6 +127,8 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
                         state.attributes["temperature"] = data["temperature"]
                     elif service == "set_hvac_mode":
                         state.state = data["hvac_mode"]
+                    elif service == "select_option":
+                        state.state = data["option"]
         finally:
             self.active_calls -= 1
 
@@ -741,6 +743,50 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         track(self.c, 36.0, True, True, False)  # grens overschreden -> weg
         self.assertIsNone(self.c._cool)
         self.assertEqual(len(self.c.heat_loss_samples), 0)
+
+    async def test_watercare_multiword_option_tried_first(self):
+        # Multi-word opties ('Super Energy Saving') werken op nieuwe
+        # geckolib: eerst de echte optie proberen, geen fallback/melding.
+        self.states["watercare"].state = "Standard"
+        self.states["watercare"].attributes["options"] = [
+            "Away From Home", "Standard", "Energy Saving",
+            "Super Energy Saving", "Weekender",
+        ]
+        notified = []
+        self.c._notify_once = lambda k, a, *r: notified.append((k, a))
+        ok = await self.c._set_watercare_opt("Super Energy Saving")
+        self.assertTrue(ok)
+        opts = [d["option"] for _, s, d in self.calls if s == "select_option"]
+        self.assertEqual(opts, ["Super Energy Saving"])
+        self.assertIn(("watercare_multiword", False), notified)
+
+    async def test_watercare_falls_back_only_on_proven_failure(self):
+        # De stand landt niet (oude geckolib faalt stilletjes) -> pas dan
+        # single-word fallback + melding.
+        self.states["watercare"].state = "Standard"
+        self.states["watercare"].attributes["options"] = [
+            "Away From Home", "Standard", "Energy Saving",
+            "Super Energy Saving", "Weekender",
+        ]
+        async def silent(domain, service, data, **kw):
+            self.calls.append((domain, service, dict(data)))
+            return True
+        self.c.hass.services.async_call = silent  # stille faal
+        self.ns["WATERCARE_VERIFY_S"] = 0
+        notified = []
+        self.c._notify_once = lambda k, a, *r: notified.append((k, a))
+        ok = await self.c._set_watercare_opt("Super Energy Saving")
+        self.assertTrue(ok)  # fallback 'Standard' landt wel
+        opts = [d["option"] for _, s, d in self.calls if s == "select_option"]
+        self.assertEqual(opts, ["Super Energy Saving", "Standard"])
+        self.assertIn(("watercare_multiword", True), notified)
+
+    async def test_watercare_already_set_skips_call(self):
+        # Staat de select al op de gewenste stand -> geen call nodig.
+        self.states["watercare"].state = "Savings"
+        ok = await self.c._set_watercare_opt("savings")  # case-tolerant
+        self.assertTrue(ok)
+        self.assertFalse(any(s == "select_option" for _, s, _ in self.calls))
 
     async def test_mixing_resume_limit_is_enforced(self):
         self.c._demand_suppressed = True
@@ -1477,24 +1523,31 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         await self.c._async_evaluate()
         self.assertFalse(self.c.pump_by_us)
 
-    async def test_watercare_multiword_falls_back_to_single_word(self):
-        """'Super Savings' faalt stilletjes in geckolib — vervang door 'Savings'."""
+    async def test_watercare_multiword_tries_real_option_first(self):
+        """'Super Savings' wordt eerst echt geprobeerd — landt -> geen fallback."""
         self.states["watercare"].attributes["options"] = [
             "Away", "Savings", "Super Savings", "Weekender",
         ]
         for want in ("Super Savings", "SUPER_SAVINGS"):
             with self.subTest(want=want):
                 self.calls.clear()
+                self.states["watercare"].state = "Savings"
                 await self.c._set_watercare_opt(want)
                 calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
-                self.assertEqual(calls, ["Savings"])
+                self.assertEqual(calls, ["Super Savings"])
 
-    async def test_watercare_multiword_without_match_uses_away(self):
-        """Geen single-word met dezelfde naam -> bekende veilige stand."""
+    async def test_watercare_multiword_proven_failure_uses_away(self):
+        """Echte optie landt niet -> bekende veilige single-word stand."""
         self.states["watercare"].attributes["options"] = ["Away", "Super Savings"]
+
+        async def silent(domain, service, data, **kw):
+            self.calls.append((domain, service, dict(data)))
+            return True
+        self.c.hass.services.async_call = silent  # stille faal
+        self.ns["WATERCARE_VERIFY_S"] = 0
         await self.c._set_watercare_opt("Super Savings")
         calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
-        self.assertEqual(calls, ["Away"])
+        self.assertEqual(calls, ["Super Savings", "Away"])
 
     async def test_watercare_single_word_unchanged(self):
         self.states["watercare"].attributes["options"] = ["Away", "Savings"]

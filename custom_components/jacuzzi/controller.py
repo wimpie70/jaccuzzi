@@ -96,6 +96,7 @@ from .const import (
     BRAKE_CONFIRM_S,
     ACTUATOR_RETRY_S,
     TUB_WATER_KG,
+    WATERCARE_VERIFY_S,
     UNREACHABLE_S,
     VERIFY_MAX_RESUMES,
     VERIFY_MIX_S,
@@ -963,57 +964,77 @@ class JacuzziController:
                 "Watercare-optie %r niet gevonden; geldig: %s", want, options
             )
             return False
-        # Let op: de geckoal-select adverteert Title-Case options maar
-        # geckolib's set_mode_by_name accepteert alleen UPPER_SNAKE.
-        # Multi-word opties ('Super Savings') falen daardoor altijd
-        # stilletjes — de servicecall 'slaagt' maar de stand verandert
-        # niet. Niet proberen: val terug op de dichtstbijzijnde
-        # single-word optie (zelfde laatste woord, anders Savings/Away)
-        # zodat piek-einde/onderhoudsherstel wél echt landt.
-        if " " in match.strip():
-            last_word = match.strip().lower().split()[-1]
-            single = [o for o in options if " " not in str(o).strip()]
-            fallback = (
-                next(
-                    (o for o in single if str(o).strip().lower() == last_word),
-                    None,
-                )
-                or next(
-                    (
-                        o
-                        for pref in ("savings", "away")
-                        for o in single
-                        if str(o).strip().lower() == pref
-                    ),
-                    None,
-                )
-                or (single[0] if single else None)
+        if sel.state == match:
+            return True  # staat al goed
+        # Probeer altijd eerst de exact geadverteerde optie: geckolib >=1.0
+        # accepteert de multi-word strings ('Super Energy Saving') direct.
+        # Alleen als de stand aantoonbaar NIET landt (oudere versies faalden
+        # stilletjes) vallen we terug op een single-word optie.
+        if not await self._select_watercare(match):
+            return False
+        if await self._watercare_landed(match):
+            self._notify_once("watercare_multiword", False, "", "")
+            return True
+        if " " not in match.strip():
+            return False  # single-word faalde echt: retry later
+        last_word = match.strip().lower().split()[-1]
+        single = [o for o in options if " " not in str(o).strip()]
+        fallback = (
+            next(
+                (o for o in single if str(o).strip().lower() == last_word),
+                None,
             )
-            if fallback is not None:
-                self._notify_once(
-                    "watercare_multiword",
-                    True,
-                    "Jacuzzi: watercare-stand vervangen",
-                    f"De gecko-integratie kan '{match}' niet zetten "
-                    f"(multi-word modes falen stilletjes) — "
-                    f"'{fallback}' gebruikt.",
-                )
-                match = fallback
-            else:
-                _LOGGER.warning(
-                    "Watercare-optie %r multi-word, geen single-word "
-                    "fallback beschikbaar in %s",
-                    match,
-                    options,
-                )
+            or next(
+                (
+                    o
+                    for pref in ("savings", "away")
+                    for o in single
+                    if str(o).strip().lower() == pref
+                ),
+                None,
+            )
+            or (single[0] if single else None)
+        )
+        if fallback is None:
+            _LOGGER.warning(
+                "Watercare-optie %r landde niet en geen single-word "
+                "fallback beschikbaar in %s",
+                match,
+                options,
+            )
+            return False
+        self._notify_once(
+            "watercare_multiword",
+            True,
+            "Jacuzzi: watercare-stand vervangen",
+            f"De gecko-integratie kan '{match}' niet zetten "
+            f"(bewezen mislukt) — '{fallback}' gebruikt.",
+        )
+        return (
+            await self._select_watercare(fallback)
+            and await self._watercare_landed(fallback)
+        )
+
+    async def _select_watercare(self, option: str) -> bool:
         return await self._async_call(
             "select",
             "select_option",
             {
                 "entity_id": self.conf["watercare_select"],
-                "option": match,
+                "option": option,
             },
         )
+
+    async def _watercare_landed(self, want: str) -> bool:
+        """Poll tot de select de gezette stand toont (max. VERIFY_S)."""
+        deadline = time.monotonic() + WATERCARE_VERIFY_S
+        while True:
+            sel = self._state("watercare_select")
+            if sel is not None and sel.state == want:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.5)
 
     async def _on_peak_start(self, _now) -> None:
         """Piekblokkade AAN: Poolex dicht + Watercare naar piek-mode.

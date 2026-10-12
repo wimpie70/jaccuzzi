@@ -64,7 +64,9 @@ COP is een **schat ÷ schat** tot er een echte vermogensmeter op de Poolex zit.
 Updates gaan daarna via HACS — geen SSH nodig.
 
 Het dashboard staat op `/jacuzzi` (native sections-view: 3 kolommen op
-desktop, klapt terug naar 1 kolom op mobiel).
+desktop, klapt terug naar 1 kolom op mobiel). De rijen gebruiken
+`custom:button-card` voor hover-tooltips — zonder die HACS-frontend
+vallen de rijen op "Custom element doesn't exist".
 
 ## Bestanden
 
