@@ -695,6 +695,53 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.c.heat_loss_samples), 1)
         self.assertAlmostEqual(self.c.heat_loss_samples[0]["drop_k"], 1.0)
 
+    async def test_cooldown_window_survives_massage_jet_pulse(self):
+        # Massagejets mengen alleen (geen warmte): een korte puls mag het
+        # venster gewoon DOORMETEN — Gecko's nachtprogramma reset niet.
+        track = self.ns["JacuzziController"]._track_cooldown
+        fake_now = [datetime.now(timezone.utc)]
+        self.ns["dt_util"].now = lambda: fake_now[0]
+        self.c._mix_until = 0
+        track(self.c, 36.0, True, True, False)
+        self.assertIsNotNone(self.c._cool)
+        fake_now[0] += timedelta(hours=2)
+        self.clock.value += 2 * 3600
+        # jet-puls van ~4 min: venster meet door
+        self.states["fan.jaccuzzi_pump_1"] = State("fan.jaccuzzi_pump_1", "on")
+        track(self.c, 36.0, True, True, False)
+        self.assertIsNotNone(self.c._cool)
+        self.assertTrue(self.c.cool_window["open"])
+        self.assertIsNone(self.c.cool_window["blocked"])
+        self.clock.value += 240
+        fake_now[0] += timedelta(minutes=4)
+        del self.states["fan.jaccuzzi_pump_1"]
+        track(self.c, 35.9, True, True, False)
+        self.assertIsNotNone(self.c._cool)
+        # nog 2 u koelen (waargenomen via meet-ticks), dan compressor ->
+        # venster sluit -> sample
+        fake_now[0] += timedelta(hours=2)
+        self.clock.value += 2 * 3600
+        track(self.c, 35.0, True, True, False)
+        track(self.c, 35.0, True, True, True)
+        self.assertEqual(len(self.c.heat_loss_samples), 1)
+        self.assertAlmostEqual(self.c.heat_loss_samples[0]["drop_k"], 1.0)
+
+    async def test_cooldown_window_dies_on_long_jet_use(self):
+        # Jets aaneengesloten langer dan de grens = bad-gebruik, geen
+        # stille nacht -> venster weg.
+        track = self.ns["JacuzziController"]._track_cooldown
+        fake_now = [datetime.now(timezone.utc)]
+        self.ns["dt_util"].now = lambda: fake_now[0]
+        self.c._mix_until = 0
+        track(self.c, 36.0, True, True, False)
+        self.assertIsNotNone(self.c._cool)
+        self.states["fan.jaccuzzi_pump_1"] = State("fan.jaccuzzi_pump_1", "on")
+        track(self.c, 36.0, True, True, False)  # jets starten
+        self.clock.value += 3600  # 60 min aan = gebruik, geen puls
+        track(self.c, 36.0, True, True, False)  # grens overschreden -> weg
+        self.assertIsNone(self.c._cool)
+        self.assertEqual(len(self.c.heat_loss_samples), 0)
+
     async def test_mixing_resume_limit_is_enforced(self):
         self.c._demand_suppressed = True
         self.c._suppress_at = self.clock.value

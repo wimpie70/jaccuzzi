@@ -50,6 +50,8 @@ from .const import (
     CONF_POOLEX_ALWAYS_ON,
     CONF_SOLAR_MIN_W,
     CONF_SOLAR_SENSOR,
+    COOLDOWN_MAX_JETS_S,
+    COOLDOWN_MAX_PAUSE_S,
     COOLDOWN_MIN_DROP_K,
     COOLDOWN_MIN_H,
     DEFAULT_AMBIENT_SENSOR,
@@ -158,6 +160,8 @@ class JacuzziController:
         self._maint_gecko_at = -ACTUATOR_RETRY_S
         self._guard_gecko_at = -ACTUATOR_RETRY_S
         self._cool: dict | None = None  # lopend warmteverlies-meetvenster
+        self._jets_since: float | None = None  # aaneengesloten jet-tijd
+        self.cool_window: dict = {}  # diagnose van het meetvenster
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
         self._run_start: tuple[float, float] | None = None  # monotonic, kuip
         self.heat_gain_samples: list[dict] = []  # laatste N stooksnelheden
@@ -581,14 +585,58 @@ class JacuzziController:
             (st := self.hass.states.get(ent)) is not None and st.state == "on"
             for ent in MIX_PUMPS
         )
-        quiet = (
-            not (compressor_on or massage_on)
-            and self._mix_until <= time.monotonic()
+        now_mono = time.monotonic()
+        # Jets mengen alleen (hooguit ~0,5 K meetverschil, vrijwel geen
+        # warmte): een korte puls mag het venster gewoon DOORMETEN. Pas
+        # langdurige jets (echt bad-gebruik, verdamping + lichaamswarmte)
+        # laten het venster vervallen.
+        jets_on = massage_on or self._mix_until > now_mono
+        if jets_on:
+            if self._jets_since is None:
+                self._jets_since = now_mono
+        else:
+            self._jets_since = None
+        long_jets = (
+            self._jets_since is not None
+            and now_mono - self._jets_since >= COOLDOWN_MAX_JETS_S
         )
-        if quiet and tub_valid and ambient is not None:
+        # Alleen de compressor voegt warmte toe -> die sluit het venster.
+        # Korte sensor- of duty-uitval PAUZEERT; de kuip koelt gewoon door.
+        heat_added = compressor_on is True
+        paused = (
+            compressor_on is None
+            or not tub_valid
+            or ambient is None
+        )
+        measuring = not heat_added and not paused and not long_jets
+        # Diagnose: waarom meet het venster (nu) niet?
+        if heat_added:
+            blocked = "compressor"
+        elif not tub_valid:
+            blocked = "kuipmeting"
+        elif ambient is None:
+            blocked = "buitentemp-sensor"
+        elif compressor_on is None:
+            blocked = "compressor-meting"
+        else:
+            blocked = None
+        self.cool_window = {
+            "open": measuring or self._cool is not None,
+            "blocked": blocked,
+            "hours": (
+                round((dt_util.now() - self._cool["start"]).total_seconds() / 3600, 1)
+                if self._cool
+                else 0.0
+            ),
+            "drop_k": (
+                round(self._cool["tub0"] - self._cool["tub"], 1) if self._cool else 0.0
+            ),
+        }
+        if measuring:
             if self._cool is None:
                 self._cool = {
                     "start": dt_util.now(),
+                    "paused_at": None,
                     "tub0": tub_temp,
                     "tub": tub_temp,
                     "amb_sum": 0.0,
@@ -598,8 +646,20 @@ class JacuzziController:
                 self._cool["tub"] = tub_temp
                 self._cool["amb_sum"] += ambient
                 self._cool["amb_n"] += 1
+            self._cool["paused_at"] = None
             return
         if self._cool is None:
+            return
+        if not heat_added:
+            # Te lang bad-gebruik -> venster vervalt.
+            if long_jets:
+                self._cool = None
+                return
+            # Pauze registreren; te lang onderbroken -> venster alsnog weg.
+            if self._cool["paused_at"] is None:
+                self._cool["paused_at"] = now_mono
+            elif now_mono - self._cool["paused_at"] >= COOLDOWN_MAX_PAUSE_S:
+                self._cool = None
             return
         cool, self._cool = self._cool, None
         hours = (dt_util.now() - cool["start"]).total_seconds() / 3600

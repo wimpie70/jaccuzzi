@@ -564,19 +564,30 @@ class JacuzziHeatLossSensor(RestoreSensor):
     def extra_state_attributes(self) -> dict:
         """De laatste meting + het sample-spoor voor spreiding."""
         samples = self._entry.runtime_data.heat_loss_samples
-        if not samples:
-            return {"metingen": 0}
-        last = samples[-1]
-        return {
+        win = self._entry.runtime_data.cool_window
+        attrs = {
             "metingen": len(samples),
-            "gemeten_op": last["at"],
-            "afkoeling_k": last["drop_k"],
-            "afkoeling_k_per_u": last["rate_k_h"],
-            "delta_t_kuip_buiten": last["delta_t_k"],
-            "buiten_gemiddeld_c": last["ambient_mean_c"],
-            "duur_u": last["hours"],
-            "samples": samples,
+            "venster_open": win.get("open", False),
+            "venster_uren": win.get("hours", 0.0),
+            "venster_daling_k": win.get("drop_k", 0.0),
         }
+        if win.get("blocked"):
+            attrs["geblokkeerd_door"] = win["blocked"]
+        if not samples:
+            return attrs
+        last = samples[-1]
+        attrs.update(
+            {
+                "gemeten_op": last["at"],
+                "afkoeling_k": last["drop_k"],
+                "afkoeling_k_per_u": last["rate_k_h"],
+                "delta_t_kuip_buiten": last["delta_t_k"],
+                "buiten_gemiddeld_c": last["ambient_mean_c"],
+                "duur_u": last["hours"],
+                "samples": samples,
+            }
+        )
+        return attrs
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData:
