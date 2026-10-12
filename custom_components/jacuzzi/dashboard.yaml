@@ -40,7 +40,8 @@ button_card_templates:
       action: more-info
     styles:
       card:
-        - padding: 10px
+        - height: 104px
+        - padding: 8px
         - border-radius: 12px
       name:
         - font-size: 12px
@@ -54,7 +55,8 @@ button_card_templates:
       action: toggle
     styles:
       card:
-        - padding: 10px
+        - height: 104px
+        - padding: 8px
         - border-radius: 12px
       name:
         - font-size: 12px
