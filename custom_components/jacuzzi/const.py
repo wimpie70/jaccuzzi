@@ -149,5 +149,56 @@ COOLDOWN_MIN_DROP_K = 0.5  # minimale daling om als meting te tellen
 COOLDOWN_MAX_PAUSE_S = 1800  # korte sensoruitval pauzeert; langer sluit
 COOLDOWN_MAX_JETS_S = 1200   # jets >20 min = gebruik, geen meetvenster
 WATERCARE_VERIFY_S = 8.0     # zo lang pollen of de watercare-stand landt
+
+# Canonieke object_ids per unique_id-achtervoegsel. Zonder suggested_
+# object_id genereert de entity registry ids uit de (vertaalde) naam —
+# taalafhankelijk ('Heat loss (W/K)' -> jacuzzi_heat_loss_w_k) en
+# breekbaar voor dashboards. Deze mapping houdt ze stabiel.
+ENTITY_OBJECT_IDS = {
+    # sensor
+    "tub_temperature": "jacuzzi_tub_temperature",
+    "poolex_inlet_temperature": "jacuzzi_poolex_inlet",
+    "poolex_delta_t": "jacuzzi_poolex_dt",
+    "poolex_fan_speed": "jacuzzi_poolex_fan_speed",
+    "poolex_compressor": "jacuzzi_poolex_compressor",
+    "poolex_power_estimate": "jacuzzi_poolex_power_estimate",
+    "heating_power": "jacuzzi_heating_power",
+    "heat_loss": "jacuzzi_heat_loss",
+    "cop_estimate": "jacuzzi_cop_estimate",
+    "poolex_fault": "jacuzzi_poolex_fault",
+    "regelstatus": "jacuzzi_control_status",
+    "meetbron": "jacuzzi_demand_source",
+    "meetafwijking": "jacuzzi_measurement_bias",
+    "advies_doorstook": "jacuzzi_overshoot_advice",
+    "verwacht_piek_einde": "jacuzzi_forecast_at_peak_end",
+    f"{CONF_POOLEX_POWER_SENSOR}_energy": "jacuzzi_poolex_energy",
+    f"{CONF_JACUZZI_POWER_SENSOR}_energy": "jacuzzi_energy",
+    # binary_sensor
+    "pomp_door_ha": "jacuzzi_pump_started_by_ha",
+    "warmtevraag": "jacuzzi_heat_demand",
+    "flow": "jacuzzi_water_flow",
+    "compressor_actief": "jacuzzi_compressor_active",
+    "gecko_heater": "jacuzzi_element_heating",
+    # climate
+    "tub_target": "jacuzzi_tub_target",
+    # button
+    "heat_loss_reset": "jacuzzi_reset_heat_loss",
+    # number
+    "solar_min_watts": "jacuzzi_solar_surplus_threshold",
+    "poolex_max_watts": "jacuzzi_poolex_max_watts",
+    "mix_interval_min": "jacuzzi_mixing_interval",
+    "inlet_compensation_k": "jacuzzi_inlet_sensor_compensation",
+    "mix_pulse_s": "jacuzzi_mixing_pulse_duration",
+    "temp_margin": "jacuzzi_heat_demand_margin",
+    "overshoot": "jacuzzi_heat_overshoot_above_target",
+    # switch
+    "poolex_power": "jacuzzi_poolex_power",
+    "poolex_always_on": "jacuzzi_poolex_always_on",
+    "mix_enabled": "jacuzzi_mixing_pulse",
+    "maintenance": "jacuzzi_maintenance",
+    # time
+    "peak_start": "jacuzzi_peak_start",
+    "peak_end": "jacuzzi_peak_end",
+}
 HEAT_LOSS_SAMPLES = 10     # bewaar de laatste N metingen
 HEAT_GAIN_SAMPLES = 5      # bewaar de laatste N stook-snelheden

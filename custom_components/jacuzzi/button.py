@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import DOMAIN
+from .const import DOMAIN, ENTITY_OBJECT_IDS
 
 
 async def async_setup_entry(
@@ -32,6 +32,9 @@ class JacuzziHeatLossResetButton(ButtonEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_heat_loss_reset"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",

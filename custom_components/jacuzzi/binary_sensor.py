@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import CONF_JACUZZI_CLIMATE, CONF_PUMP_FAN, DOMAIN
+from .const import CONF_JACUZZI_CLIMATE, CONF_PUMP_FAN, DOMAIN, ENTITY_OBJECT_IDS
 
 
 async def async_setup_entry(
@@ -69,6 +69,9 @@ class JacuzziFlagBinarySensor(_JacuzziBinarySensor):
         """Set unique id."""
         super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_pomp_door_ha"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
 
     @property
     def is_on(self) -> bool:
@@ -86,6 +89,9 @@ class JacuzziDemandBinarySensor(_JacuzziBinarySensor):
         """Set unique id."""
         super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_warmtevraag"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
 
     @property
     def is_on(self) -> bool:
@@ -107,6 +113,9 @@ class JacuzziFlowBinarySensor(_JacuzziBinarySensor):
         """Set unique id."""
         super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_flow"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -132,6 +141,9 @@ class JacuzziCompressorBinarySensor(_JacuzziBinarySensor):
         """Set unique id."""
         super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_compressor_actief"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -153,6 +165,9 @@ class JacuzziGeckoHeaterBinarySensor(_JacuzziBinarySensor):
         """Set unique id."""
         super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_gecko_heater"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
 
     @property
     def is_on(self) -> bool | None:

@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .const import (
+    ENTITY_OBJECT_IDS,
     CONF_INLET_COMPENSATION,
     CONF_MIX_INTERVAL_MIN,
     CONF_MIX_PULSE_S,
@@ -152,6 +153,9 @@ class JacuzziOptionNumber(NumberEntity):
         self._attr_native_step = step
         self._attr_native_unit_of_measurement = unit
         self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {"identifiers": {(DOMAIN, entry.entry_id)}}
 
     @property

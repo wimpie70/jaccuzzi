@@ -28,7 +28,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
-from .const import DOMAIN, MAX_TUB_C
+from .const import DOMAIN, ENTITY_OBJECT_IDS, MAX_TUB_C
 
 ATTR_SOURCE = "demand_bron"  # welke sensor leidend was (kuip/inlaat)
 ATTR_SUPPRESSED = "rem_actief"  # rem-reden of 'uit'
@@ -68,6 +68,9 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
         self._entry = entry
         self._controller = entry.runtime_data
         self._attr_unique_id = f"{entry.entry_id}_tub_target"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {"identifiers": {(DOMAIN, entry.entry_id)}}
 
     async def async_added_to_hass(self) -> None:

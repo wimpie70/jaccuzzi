@@ -588,9 +588,11 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((ROOT / "__init__.py").read_text())
         tree.body = [n for n in tree.body if (
             isinstance(n, ast.AsyncFunctionDef) and n.name == "async_setup_entry"
+            or isinstance(n, ast.FunctionDef) and n.name == "_migrate_entity_ids"
             or isinstance(n, ast.ImportFrom) and n.module == "__future__"
         )]
-        entry = SimpleNamespace(data=dict(self.c.conf), options={}, runtime_data=None,
+        entry = SimpleNamespace(entry_id="eid", data=dict(self.c.conf), options={},
+                                runtime_data=None,
                                 async_on_unload=lambda fn: None, add_update_listener=lambda fn: None)
         entry.data["normal_setpoint"] = 38
         async def forward(entry, platforms):
@@ -606,6 +608,29 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         ns = dict(self.ns)
         ns.update(PLATFORMS=[], _async_update_listener=lambda *a: None,
                   async_setup_dashboard=dashboard)
+        # Fake entity-registry met naam-gegenereerde ids: de migratie moet
+        # ze naar de canonieke object_ids hernoemen vóór platform-setup.
+        renamed = {}
+        reg_entries = [
+            SimpleNamespace(unique_id="eid_heat_loss",
+                            entity_id="sensor.jacuzzi_heat_loss_w_k",
+                            domain="sensor"),
+            SimpleNamespace(unique_id="eid_heating_power",
+                            entity_id="sensor.jacuzzi_thermal_power",
+                            domain="sensor"),
+            SimpleNamespace(unique_id="eid_tub_temperature",
+                            entity_id="sensor.jacuzzi_tub_temperature",
+                            domain="sensor"),
+        ]
+        reg = SimpleNamespace(
+            async_get=lambda eid: None,
+            async_update_entity=lambda old, new_entity_id: renamed.update(
+                {old: new_entity_id}),
+        )
+        ns["er"] = SimpleNamespace(
+            async_get=lambda hass: reg,
+            async_entries_for_config_entry=lambda r, eid: reg_entries,
+        )
         self.ns.update(async_get_integration=integration,
                        async_track_state_change_event=lambda *a: lambda: None,
                        async_track_time_interval=lambda *a: lambda: None,
@@ -613,6 +638,11 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         exec(compile(tree, "setup_test", "exec"), ns)
         self.c.hass.config_entries = SimpleNamespace(async_forward_entry_setups=forward)
         await ns["async_setup_entry"](self.c.hass, entry)
+        self.assertEqual(renamed["sensor.jacuzzi_heat_loss_w_k"],
+                         "sensor.jacuzzi_heat_loss")
+        self.assertEqual(renamed["sensor.jacuzzi_thermal_power"],
+                         "sensor.jacuzzi_heating_power")
+        self.assertNotIn("sensor.jacuzzi_tub_temperature", renamed)
         self.assertEqual(entry.runtime_data.heat_setpoint, 37)
         self.assertFalse(entry.runtime_data.heating_enabled)
         self.assertFalse(any(t > 15 for t in self.temperatures()))
@@ -1685,6 +1715,38 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "async_setup_entry")
         body = ast.unparse(fn)
         self.assertLess(body.index("async_forward_entry_setups"), body.index("controller.async_start"))
+
+    def test_dashboard_entity_ids_match_canonical_map(self):
+        """Elke jacuzzi_* entity-ref in het dashboard is een canonieke id.
+
+        Entity-ids werden uit de vertaalde naam gegenereerd; deze test
+        bewaakt dat het dashboard alleen ids uit ENTITY_OBJECT_IDS
+        gebruikt, zodat kaarten niet naar niet-bestaande ids wijzen.
+        """
+        import yaml
+
+        dash = yaml.safe_load(
+            (ROOT / "dashboard.yaml").read_text(encoding="utf-8")
+        )
+        found = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                for key, val in node.items():
+                    if key == "entity" and isinstance(val, str) and ".jacuzzi_" in val:
+                        found.add(val.split(".", 1)[1])
+                    else:
+                        walk(val)
+            elif isinstance(node, list):
+                for val in node:
+                    walk(val)
+
+        walk(dash)
+        canoniek = set(self.ns["ENTITY_OBJECT_IDS"].values())
+        # strip het 'jacuzzi_'-voorvoegsel bij vergelijking niet: object_id
+        # bevat die zelf (sensor.jacuzzi_heat_loss -> jacuzzi_heat_loss)
+        onbekend = sorted(found - {o for o in canoniek})
+        self.assertEqual(onbekend, [])
 
 
 if __name__ == "__main__":

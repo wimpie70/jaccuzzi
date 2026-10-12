@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE
 from .const import (
+    ENTITY_OBJECT_IDS,
     CONF_COMPRESSOR_SENSOR,
     CONF_JACUZZI_CLIMATE,
     CONF_MAINT_SAVED,
@@ -65,6 +66,9 @@ class JacuzziPoolexSwitch(SwitchEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_power"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -130,6 +134,9 @@ class JacuzziAlwaysOnSwitch(SwitchEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{CONF_POOLEX_ALWAYS_ON}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -177,6 +184,9 @@ class JacuzziMixSwitch(SwitchEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{CONF_MIX_ENABLED}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -226,6 +236,9 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{CONF_MAINTENANCE}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",

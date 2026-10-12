@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import JacuzziConfigEntry
 from .const import (
+    ENTITY_OBJECT_IDS,
     CONF_PEAK_END,
     CONF_PEAK_START,
     DEFAULT_PEAK_END,
@@ -62,6 +63,9 @@ class JacuzziPeakTime(TimeEntity):
         self._attr_translation_key = translation_key
         self._attr_icon = icon
         self._attr_unique_id = f"{entry.entry_id}_{conf_key}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {"identifiers": {(DOMAIN, entry.entry_id)}}
 
     @property

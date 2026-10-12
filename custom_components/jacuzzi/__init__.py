@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_INLET_COMPENSATION,
@@ -18,6 +21,7 @@ from .const import (
     CONF_TEMP_MARGIN,
     CONF_WATERCARE_NORMAL,
     CONF_WATERCARE_PEAK,
+    ENTITY_OBJECT_IDS,
 )
 from .controller import JacuzziController
 from .dashboard import async_setup_dashboard, teardown_dashboard
@@ -33,6 +37,29 @@ PLATFORMS = [
 ]
 
 type JacuzziConfigEntry = ConfigEntry[JacuzziController]
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _migrate_entity_ids(hass: HomeAssistant, entry: JacuzziConfigEntry) -> None:
+    """Hernoem naam-gegenereerde entity_ids naar de canonieke object_ids.
+
+    Entities zonder suggested_object_id kregen ids uit de vertaalde
+    naam ('Heat loss (W/K)' -> sensor.jacuzzi_heat_loss_w_k,
+    'Thermal power' -> sensor.jacuzzi_thermal_power). Hernoem ze
+    eenmalig naar de stabiele ids die het dashboard gebruikt; al
+    hernoemde of botsende entries blijven ongemoeid.
+    """
+    reg = er.async_get(hass)
+    prefix = f"{entry.entry_id}_"
+    for ent in er.async_entries_for_config_entry(reg, entry.entry_id):
+        obj = ENTITY_OBJECT_IDS.get(ent.unique_id.removeprefix(prefix))
+        if obj is None:
+            continue
+        want = f"{ent.domain}.{obj}"
+        if ent.entity_id != want and reg.async_get(want) is None:
+            _LOGGER.info("entity_id %s -> %s", ent.entity_id, want)
+            reg.async_update_entity(ent.entity_id, new_entity_id=want)
 
 # Opties die de controller elke evaluatie-tick uit ``conf`` leest. Een
 # wijziging daarvan geldt bij de eerstvolgende evaluatie en mag de
@@ -65,6 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JacuzziConfigEntry) -> b
     controller = JacuzziController(hass, conf)
     entry.runtime_data = controller
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    _migrate_entity_ids(hass, entry)
     # Eerst het opgeslagen kuip-doel en hvac-mode herstellen; nooit met
     # het default-doel verwarmen tijdens startup of een options-reload.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

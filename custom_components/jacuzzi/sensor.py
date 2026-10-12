@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE, _parse_hhmm
 from .const import (
+    ENTITY_OBJECT_IDS,
     CONF_JACUZZI_CLIMATE,
     CONF_JACUZZI_POWER_SENSOR,
     CONF_OVERSHOOT,
@@ -123,6 +124,9 @@ class JacuzziTubTempSensor(SensorEntity):
         """Bind aan de controller."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tub_temperature"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -169,6 +173,9 @@ class JacuzziPoolexInletTempSensor(SensorEntity):
         """Bind aan de controller."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_inlet_temperature"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -218,6 +225,9 @@ class JacuzziPoolexDeltaTSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_delta_t"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -281,6 +291,9 @@ class JacuzziPoolexFanSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_fan_speed"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -329,6 +342,9 @@ class JacuzziPoolexCompressorSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_compressor"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -379,6 +395,9 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_power_estimate"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -436,6 +455,9 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_heating_power"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -548,6 +570,9 @@ class JacuzziHeatLossSensor(RestoreSensor):
         """Bind aan de controller."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_heat_loss"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -646,6 +671,9 @@ class JacuzziCopEstimateSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_cop_estimate"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -828,6 +856,9 @@ class JacuzziPoolexFaultSensor(SensorEntity):
         """Bind aan de config entry."""
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_poolex_fault"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Jacuzzi",
@@ -878,6 +909,9 @@ class JacuzziEnergySensor(RestoreSensor):
         self._conf_key = conf_key
         self._attr_translation_key = translation_key
         self._attr_unique_id = f"{entry.entry_id}_{conf_key}_energy"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_device_info = {"identifiers": {(DOMAIN, entry.entry_id)}}
         self._kwh = 0.0
         self._last_w: float | None = None
@@ -954,6 +988,9 @@ class _ControllerSensor(SensorEntity):
         self._entry = entry
         self._controller = entry.runtime_data
         self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._attr_suggested_object_id = ENTITY_OBJECT_IDS.get(
+            self._attr_unique_id.removeprefix(f"{entry.entry_id}_")
+        )
         self._attr_translation_key = key
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.entry_id)},
