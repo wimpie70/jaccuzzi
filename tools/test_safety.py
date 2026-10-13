@@ -979,7 +979,9 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
 
     def switch_class(self, name):
         ns = dict(self.ns)
-        ns["SwitchEntity"] = type("SwitchEntity", (), {})
+        ns["SwitchEntity"] = type(
+            "SwitchEntity", (), {"async_write_ha_state": lambda self: None}
+        )
         tree = ast.parse((ROOT / "switch.py").read_text())
         tree.body = [n for n in tree.body if isinstance(n, ast.ClassDef)
                      or isinstance(n, ast.ImportFrom) and n.module == "__future__"]

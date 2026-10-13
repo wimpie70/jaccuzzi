@@ -91,3 +91,5 @@ class JacuzziPeakTime(TimeEntity):
         options = dict(self._entry.options)
         options[self._conf_key] = value.strftime("%H:%M")
         self.hass.config_entries.async_update_entry(self._entry, options=options)
+        # should_poll=False -> na de service-call zelf de state publiceren.
+        self.async_write_ha_state()

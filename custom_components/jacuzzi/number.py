@@ -189,3 +189,7 @@ class JacuzziOptionNumber(NumberEntity):
         options = dict(self._entry.options)
         options[self._key] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
+        # should_poll=False -> HA schrijft na de service-call geen state
+        # terug; zonder eigen write blijft de weergegeven waarde hangen op
+        # de laatste reload.
+        self.async_write_ha_state()

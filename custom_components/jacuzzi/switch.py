@@ -159,6 +159,9 @@ class JacuzziAlwaysOnSwitch(SwitchEntity):
         options = dict(self._entry.options)
         options[CONF_POOLEX_ALWAYS_ON] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
+        # should_poll=False -> na de service-call zelf de state publiceren,
+        # anders blijft de UI de waarde van de laatste reload tonen.
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._set_option(True)
@@ -207,6 +210,9 @@ class JacuzziMixSwitch(SwitchEntity):
         options = dict(self._entry.options)
         options[CONF_MIX_ENABLED] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
+        # should_poll=False -> na de service-call zelf de state publiceren,
+        # anders blijft de UI de waarde van de laatste reload tonen.
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._set_option(True)
@@ -366,6 +372,7 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 "de Gecko-pack kan zelf pompen starten (flow-checks). "
                 "Bij een lege kuip: schakel de groep uit in de meterkast!",
             )
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Herstel de bewaarde standen; de controller hervat."""
@@ -410,3 +417,4 @@ class JacuzziMaintenanceSwitch(SwitchEntity):
                 },
             )
         self.hass.config_entries.async_update_entry(self._entry, options=options)
+        self.async_write_ha_state()
