@@ -6,6 +6,7 @@ update-listener reloadt de integratie zodat de nieuwe waarde geldt.
 
 from __future__ import annotations
 
+import logging
 import math
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -31,6 +32,8 @@ from .const import (
     DEFAULT_TEMP_MARGIN,
     DOMAIN,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -114,7 +117,7 @@ async def async_setup_entry(
                 translation_key="overshoot",
                 icon="mdi:thermometer-plus",
                 min_v=0.0,
-                max_v=2.0,
+                max_v=4.0,
                 step=0.1,
                 unit="K",
             ),
@@ -170,8 +173,18 @@ class JacuzziOptionNumber(NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Sla de waarde op in options; de update-listener reloadt."""
         value = float(value)
-        if not math.isfinite(value) or not self._attr_native_min_value <= value <= self._attr_native_max_value:
+        if not math.isfinite(value) or not (
+            self._attr_native_min_value <= value <= self._attr_native_max_value
+        ):
+            _LOGGER.warning(
+                "%s: waarde %s buiten bereik %s-%s — genegeerd",
+                self.entity_id,
+                value,
+                self._attr_native_min_value,
+                self._attr_native_max_value,
+            )
             raise ValueError("Optiewaarde buiten het toegestane bereik")
+        _LOGGER.info("%s: %s -> %s", self.entity_id, self.native_value, value)
         options = dict(self._entry.options)
         options[self._key] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
