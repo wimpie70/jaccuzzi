@@ -52,6 +52,9 @@ DEFAULT_TEMP_MARGIN = 0.5        # vraag ontstaat onder doel-marge
 # Normale stop = min(doel + doorstook, MAX_TUB_C); alle stops gaan
 # vóór looptijd-timers. Retour-marge verhoogt GEEN temperatuurgrens.
 DEFAULT_OVERSHOOT_K = 1.0
+# Deze grens geldt op drie plekken: number-min/max, de settings-validatie
+# (ongeldig = verwarming geblokkeerd) en de stopgrens-clamp. Houd ze gelijk.
+OVERSHOOT_MAX_K = 4.0
 PEAK_MODE_SETPOINT = "setpoint"   # piek = laag setpoint, unit blijft aan
 PEAK_MODE_OFF = "off"             # legacy configwaarde; nooit meer uitgevoerd
 DEFAULT_PEAK_MODE = PEAK_MODE_SETPOINT

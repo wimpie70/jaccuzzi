@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_SOLAR_MIN_W,
     DEFAULT_TEMP_MARGIN,
     DOMAIN,
+    OVERSHOOT_MAX_K,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -117,7 +118,7 @@ async def async_setup_entry(
                 translation_key="overshoot",
                 icon="mdi:thermometer-plus",
                 min_v=0.0,
-                max_v=4.0,
+                max_v=OVERSHOOT_MAX_K,
                 step=0.1,
                 unit="K",
             ),

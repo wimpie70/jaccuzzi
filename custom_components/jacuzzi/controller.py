@@ -79,6 +79,7 @@ from .const import (
     MIX_PUMPS,
     NO_COMPRESSOR_S,
     OVERHEAT_MARGIN_K,
+    OVERSHOOT_MAX_K,
     POOLEX_OFF_GUARD_S,
     POOLEX_OUTLET_SENSOR,
     POOLEX_SETPOINT_FLOOR,
@@ -329,7 +330,9 @@ class JacuzziController:
         overshoot = self._option_float(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K)
         if not math.isfinite(overshoot):
             overshoot = 0.0  # ongeldige instellingen blokkeren bovendien alle vraag
-        return min(MAX_TUB_C, self._heat_setpoint + max(0.0, min(2.0, overshoot)))
+        return min(
+            MAX_TUB_C, self._heat_setpoint + max(0.0, min(OVERSHOOT_MAX_K, overshoot))
+        )
 
     # --- helpers -----------------------------------------------------
 
@@ -1396,7 +1399,7 @@ class JacuzziController:
         settings_ok = (
             math.isfinite(margin)
             and 0.0 <= margin <= 5.0
-            and (math.isfinite(overshoot) and 0.0 <= overshoot <= 2.0)
+            and (math.isfinite(overshoot) and 0.0 <= overshoot <= OVERSHOOT_MAX_K)
         )
         peak_block = self._peak_active or (in_peak and not self._early_restored)
         stop_temp = self.stop_temperature
