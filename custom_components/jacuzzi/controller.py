@@ -142,6 +142,7 @@ class JacuzziController:
         self.conf = conf
         self.pump_by_us = False  # wij hebben de pomp aangezet
         self._pump_off_pending = False
+        self._pump_off_fail_logged = False
         self._reloading = False  # options-reload != integratie verwijderen
         self._ha_stopping = False  # HA herstart != integratie verwijderen
         self.warmtevraag = False  # warmte gevraagd (voor sensor)
@@ -407,6 +408,20 @@ class JacuzziController:
                 # Rust telt vanaf BEVESTIGDE stop, niet vanaf het commando.
                 self._suppress_at = now
             self._brake_since = None
+            if self._brake_lockout and self._suppress_reason in (
+                "stop niet bevestigd",
+                "rem (herstel nodig)",
+            ):
+                # Een trage compressornaloop latchte de rem; met laag
+                # setpoint én compressor-uit is de situatie bewezen
+                # veilig — vrijgeven. De flow-fault-lockout blijft
+                # bewust een handmatige herstelactie.
+                _LOGGER.info(
+                    "Compressorstop alsnog bevestigd — rem-lockout vrijgegeven"
+                )
+                self._brake_lockout = False
+                self._suppress_reason = ""
+                self._notify_once("brake_failed", False, "", "")
         elif self._brake_since is None:
             self._brake_since = now
         failed = False
@@ -493,7 +508,9 @@ class JacuzziController:
         else:
             _LOGGER.warning("Geen meldingsservice beschikbaar voor %s: %s", title, message)
 
-    async def _async_call(self, domain: str, service: str, data: dict) -> bool:
+    async def _async_call(
+        self, domain: str, service: str, data: dict, log_failure: bool = True
+    ) -> bool:
         if self._stopped:
             return False
         # Centrale invariant, ook voor oude piek-configs: nooit hvac off.
@@ -566,7 +583,10 @@ class JacuzziController:
             )
             return True
         except Exception as err:  # noqa: BLE001 - log en ga door
-            _LOGGER.error("%s.%s faalde: %s", domain, service, err)
+            if log_failure:
+                _LOGGER.error("%s.%s faalde: %s", domain, service, err)
+            else:
+                _LOGGER.debug("%s.%s faalde (herhaald): %s", domain, service, err)
             return False
 
     def _track_cooldown(
@@ -1612,7 +1632,11 @@ class JacuzziController:
         if safety_reason:
             self._verify_until = 0.0
             self._verify_pending = False
-            self._verify_tub_at_stop = None
+            # Alleen een rem-time-out heelt zichzelf (compressornaloop);
+            # de bij-stop-meting bewaren zodat de meng-check na vrijgave
+            # alsnog kan draaien. Andere redenen maken hem onbetrouwbaar.
+            if safety_reason != "stop niet bevestigd":
+                self._verify_tub_at_stop = None
         if not self.warmtevraag:
             if self._run_active:
                 # De lopende startpoging is nu geëindigd. Een volgende
@@ -1985,18 +2009,27 @@ class JacuzziController:
             and not verify_active
             and self._pump_cmd_ready()
         ):
-            _LOGGER.info(
-                "Setpoint bereikt / geen vraag — pomp uit%s",
-                " (piekblokkade)"
-                if in_peak
-                else " (na nakoeling uitlaat)"
-                if self._afterheat_hold
-                else "",
-            )
+            if not self._pump_off_pending:
+                _LOGGER.info(
+                    "Setpoint bereikt / geen vraag — pomp uit%s",
+                    " (piekblokkade)"
+                    if in_peak
+                    else " (na nakoeling uitlaat)"
+                    if self._afterheat_hold
+                    else "",
+                )
+                self._pump_off_fail_logged = False
             self._pump_off_pending = True
-            await self._async_call(
-                "fan", "turn_off", {"entity_id": self.conf["pump_fan"]}
-            )
+            # De Gecko-pack kan de pomp zelf vasthouden ('non-user
+            # initiators'); herkansen blijft, maar niet elke 30 s een
+            # ERROR loggen — 1x per stop-episode is genoeg.
+            if not await self._async_call(
+                "fan",
+                "turn_off",
+                {"entity_id": self.conf["pump_fan"]},
+                log_failure=not self._pump_off_fail_logged,
+            ):
+                self._pump_off_fail_logged = True
         # Een servicecall is geen bewijs dat Gecko het commando uitvoerde.
         # Eigenaarschap behouden bij weigering/trage echo, zodat de volgende
         # evaluatie kan herkansen; pas loslaten bij bevestigde pomp-uit.
@@ -2008,6 +2041,7 @@ class JacuzziController:
         ):
             self.pump_by_us = False
             self._pump_off_pending = False
+            self._pump_off_fail_logged = False
             self._compressor_recently_on = False
             self._afterheat_hold = False
 

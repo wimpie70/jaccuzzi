@@ -108,7 +108,7 @@ async def async_setup_entry(
                 icon="mdi:thermometer-low",
                 min_v=0.0,
                 max_v=5.0,
-                step=0.1,
+                step=0.5,
                 unit="°C",
             ),
             JacuzziOptionNumber(
@@ -119,7 +119,7 @@ async def async_setup_entry(
                 icon="mdi:thermometer-plus",
                 min_v=0.0,
                 max_v=OVERSHOOT_MAX_K,
-                step=0.1,
+                step=0.5,
                 unit="K",
             ),
         ]

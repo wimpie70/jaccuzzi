@@ -45,6 +45,11 @@
 - Options updates reload the entry; the controller is marked `_reloading` so
   unload keeps the yaml dashboard panel registered — tearing it down makes the
   frontend jump to the home dashboard.
+- Non-polling entities that persist values via `async_update_entry` MUST call
+  `async_write_ha_state()` themselves after the write. HA only refreshes
+  entity state after a service call when `should_poll` is True; without the
+  explicit write the options land but the UI shows the last reload's value
+  forever (diagnosed on prod for the doorstook number, v0.10.5).
 - Run offline safety regressions with:
   `python3 -m unittest discover -s tools -p 'test_*.py'`
   These execute controller/lifecycle code against HA/service doubles; they do

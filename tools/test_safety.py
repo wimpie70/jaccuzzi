@@ -1027,7 +1027,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.c._notify_once = lambda *args: alarms.append(args)
         self.tub(38)
         await self.c._async_evaluate()
-        self.clock.value += 120
+        self.clock.value += 190
         await self.c._async_evaluate()
         self.assertTrue(any(a[0] == "brake_failed" and a[1] for a in alarms))
         self.assertTrue(self.c._brake_lockout)
@@ -1036,6 +1036,33 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(self.temperatures().count(15), 2)
         self.assertEqual(self.states["poolex"].state, "heat")
         self.assertFalse(self.c.warmtevraag)
+
+    async def test_late_confirmed_stop_releases_brake_lockout(self):
+        # De Poolex heeft een eigen minimale compressornaloop: de stop kan
+        # later dan BRAKE_CONFIRM_S bevestigen. Zodra laag+uit wél vaststaat
+        # is er niets onveiligs meer — de lockout mag zichzelf vrijgeven.
+        self.tub(38)
+        await self.c._async_evaluate()
+        self.clock.value += 190
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._brake_lockout)
+        # Compressor stopt alsnog; setpoint staat al op 15 -> bevestigd.
+        self.states["compressor"].state = "0"
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._brake_lockout)
+        self.assertEqual(self.c.rem_reden, "geen warmtevraag")
+
+    async def test_flow_fault_lockout_survives_confirmed_brake(self):
+        # De flow-fault-noodstop is bewust vergrendeld: ook een bevestigde
+        # rem mag die niet zelfstandig vrijgeven.
+        self.tub(38)
+        await self.c._async_evaluate()
+        self.c._flow_lockout = True
+        self.c._brake_lockout = True
+        self.c._suppress_reason = "flow-storing"
+        self.states["compressor"].state = "0"
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._brake_lockout)
 
     async def test_short_startup_rest_does_not_skip_stop_confirmation(self):
         self.c._demand_suppressed = True

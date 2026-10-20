@@ -92,7 +92,8 @@ STARTUP_GRACE_S = 90          # ontbrekende entities stellen rem/melding kort ui
 # Temperatuur- en sensorstops mogen nooit op een minimale looptijd wachten.
 MAX_TUB_C = 40.0              # absolute softwaregrens; overshoot wordt hier begrensd
 SENSOR_MAX_AGE_S = 300        # vereist periodieke HA-rapportage, ook bij gelijke waarde
-BRAKE_CONFIRM_S = 90         # setpoint laag EN compressor uit moeten bevestigd zijn
+BRAKE_CONFIRM_S = 180        # setpoint laag EN compressor uit moeten bevestigd zijn;
+                             # de Poolex heeft een eigen minimale naloop van minuten
 ACTUATOR_RETRY_S = 30        # herhalen zonder event/service-storm
 OVERHEAT_MARGIN_K = 1.0        # kuip > doel + overshoot + dit ->
                                # meteen remmen
