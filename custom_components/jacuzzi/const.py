@@ -9,6 +9,7 @@ CONF_COMPRESSOR_SENSOR = "compressor_sensor"
 CONF_PROBLEM_SENSOR = "problem_sensor"
 CONF_WATERCARE_SELECT = "watercare_select"
 CONF_NOTIFY_SERVICE = "notify_service"
+CONF_CRITICAL_NOTIFY_SERVICE = "critical_notify_service"
 CONF_PEAK_START = "peak_start"
 CONF_PEAK_END = "peak_end"
 CONF_WARM_UNTIL = "warm_until"
@@ -145,6 +146,34 @@ EVAL_INTERVAL_S = 30     # periodieke her-evaluatie van timers
 UNREACHABLE_S = 900      # Poolex offline (PRCD-stekker/stroomstoring)
 POOLEX_OFF_GUARD_S = 60  # hvac 'off' moet zo lang aanhouden voor de guard
 RELOAD_COOLDOWN_S = 900  # max 1x per kwartier de Gecko-entry reloaden
+
+# De geckoal-coordinator rapporteert 'success' met gecachte data terwijl
+# de MQTT-link dood is: entities blijven 'vers' (last_reported ververst
+# elke poll) en beschikbaar, maar commando's landen nooit (gezien prod
+# 05/11: ~9 uur dode link, 'pomp aan' elke 30 s zonder effect). _fresh
+# alleen dekt deze uitval dus niet — eigen signalen hieronder.
+GECKO_FLAP_WINDOW_S = 900   # lopend venster voor unavailable-ticks
+GECKO_FLAP_MIN_TICKS = 8    # ~4 min unavailable in het venster (eval ~30 s)
+GECKO_FLAP_MIN_SPAN_S = 120 # ticks moeten ook >2 min uit elkaar liggen —
+                            # state-change-evals kunnen in bursts vuren
+GECKO_CMD_CONFIRM_S = 300   # een pomp-aan moet binnen zoveel sec landen
+GECKO_FROZEN_S = 14400      # 4 h identieke toestand+temperatuur => cache
+
+# Meldingen die fysieke veiligheid raken of betekenen dat wij de
+# actuator niet meer kunnen remmen/besturen. Al het andere (stale-
+# sensoren, flapjes, meng-/watercare-/optiefouten, statusinfo) is
+# diagnostiek — de gebruiker filtert die weg. Alleen deze set mag via
+# de kritieke notify-service + ALARM-prefix + high-priority data gaan.
+CRITICAL_NOTIFY_KEYS = frozenset(
+    {
+        "overheat",            # absolute MAX_TUB_C bereikt
+        "brake_failed",        # compressorstop niet bevestigd
+        "flow_fault",          # probleembit + pomp (lek/drooglopen)
+        "problem",             # echte fault-bit van de unit
+        "gecko_heat_stop",     # elektrisch element blijft mogelijk stoken
+        "poolex_unreachable",  # actuator onbereikbaar -> niet rembaar
+    }
+)
 
 # Warmteverlies-meting: tijdens stille periodes (alle pompen + compressor
 # uit) daalt de kuip-temp. W/K-coëfficiënt = afkoeling genormaliseerd op

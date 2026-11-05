@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    CONF_CRITICAL_NOTIFY_SERVICE,
     CONF_INLET_COMPENSATION,
     CONF_MIX_ENABLED,
     CONF_MIX_INTERVAL_MIN,
@@ -79,6 +80,7 @@ _LIVE_OPTION_KEYS = frozenset(
         CONF_SOLAR_SENSOR,
         CONF_SOLAR_MIN_W,
         CONF_NOTIFY_SERVICE,
+        CONF_CRITICAL_NOTIFY_SERVICE,
         CONF_WATERCARE_PEAK,
         CONF_WATERCARE_NORMAL,
         CONF_INLET_COMPENSATION,
