@@ -82,6 +82,16 @@ DEFAULTS = {
     CONF_SOLAR_MIN_W: DEFAULT_SOLAR_MIN_W,
 }
 
+# Optionele entity-velden die leeg mogen zijn (power-sensoren).
+OPTIONAL_ENTITY_KEYS = (
+    CONF_SOLAR_SENSOR,
+    CONF_POOLEX_POWER_SENSOR,
+    CONF_JACUZZI_POWER_SENSOR,
+)
+OPTIONAL_ENTITY_CONFIG = selector.EntitySelectorConfig(
+    domain="sensor", device_class="power"
+)
+
 
 def _schema(current: dict | None = None) -> vol.Schema:
     """Build the config/options schema; `current` overrides defaults."""
@@ -139,25 +149,25 @@ def _schema(current: dict | None = None) -> vol.Schema:
         default=current.get(CONF_POOLEX_ALWAYS_ON, DEFAULT_POOLEX_ALWAYS_ON),
     )] = selector.BooleanSelector()
     data[vol.Optional(
-        CONF_SOLAR_SENSOR, default=current.get(CONF_SOLAR_SENSOR, "")
-    )] = selector.EntitySelector(
-        selector.EntitySelectorConfig(domain="sensor", device_class="power")
-    )
-    data[vol.Optional(
         CONF_SOLAR_MIN_W, default=current.get(CONF_SOLAR_MIN_W, DEFAULT_SOLAR_MIN_W)
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=500, max=10000, step=100, unit_of_measurement="W")
     )
-    data[vol.Optional(
-        CONF_POOLEX_POWER_SENSOR, default=current.get(CONF_POOLEX_POWER_SENSOR, "")
-    )] = selector.EntitySelector(
-        selector.EntitySelectorConfig(domain="sensor", device_class="power")
-    )
-    data[vol.Optional(
-        CONF_JACUZZI_POWER_SENSOR, default=current.get(CONF_JACUZZI_POWER_SENSOR, "")
-    )] = selector.EntitySelector(
-        selector.EntitySelectorConfig(domain="sensor", device_class="power")
-    )
+    # Optionele power-sensoren: '' (wat de frontend stuurt voor een leeg
+    # optioneel entity-veld) moet door de validatie — EntitySelector weigert
+    # '' als 'not a valid entity ID', waardoor het veld feitelijk verplicht
+    # werd. Geen default='': voluptuous valideert defaults ook.
+    # behandelen ''/afwezig als 'niet ingesteld'.
+    for key in OPTIONAL_ENTITY_KEYS:
+        current_value = current.get(key)
+        marker = (
+            vol.Optional(key, default=current_value)
+            if current_value
+            else vol.Optional(key)
+        )
+        data[marker] = vol.Any(
+            "", selector.EntitySelector(OPTIONAL_ENTITY_CONFIG)
+        )
     return vol.Schema(data)
 
 
@@ -171,9 +181,12 @@ def _normalize_hhmm(val) -> str:
 
 
 def _normalize(user_input: dict) -> dict:
-    """Normalise time fields in the submitted data."""
+    """Normalise time fields; drop lege optionele entity-picks."""
     for key in (CONF_PEAK_START, CONF_PEAK_END, CONF_WARM_UNTIL):
         user_input[key] = _normalize_hhmm(user_input[key])
+    for key in OPTIONAL_ENTITY_KEYS:
+        if user_input.get(key) == "":
+            user_input.pop(key)
     return user_input
 
 
