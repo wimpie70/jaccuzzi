@@ -10,6 +10,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_COMPRESSOR_SENSOR,
+    CONF_CRITICAL_NOTIFY_SERVICE,
     CONF_JACUZZI_CLIMATE,
     CONF_NOTIFY_SERVICE,
     CONF_PEAK_END,
@@ -92,6 +93,10 @@ def _schema(current: dict | None = None) -> vol.Schema:
         ] = selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
     data[vol.Optional(
         CONF_NOTIFY_SERVICE, default=current.get(CONF_NOTIFY_SERVICE, DEFAULT_NOTIFY_SERVICE)
+    )] = selector.TextSelector()
+    data[vol.Optional(
+        CONF_CRITICAL_NOTIFY_SERVICE,
+        default=current.get(CONF_CRITICAL_NOTIFY_SERVICE, ""),
     )] = selector.TextSelector()
     data[vol.Required(
         CONF_PEAK_START, default=current.get(CONF_PEAK_START, DEFAULT_PEAK_START)
@@ -188,8 +193,9 @@ class JacuzziConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        """Return the options flow."""
-        return JacuzziOptionsFlow(config_entry)
+        """Return the options flow; config_entry arg nooit doorgeven —
+        HA zet self.config_entry zelf (expliciete pass faalt >=2025.12)."""
+        return JacuzziOptionsFlow()
 
 
 class JacuzziOptionsFlow(OptionsFlow):

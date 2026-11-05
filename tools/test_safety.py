@@ -61,6 +61,16 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.clock = SimpleNamespace(value=10000.0)
         self.ns["time"] = SimpleNamespace(monotonic=lambda: self.clock.value)
         self.ns["State"] = State
+        # Entity-registry + config_entries stubs zodat de echte
+        # _maybe_reload_gecko volledig doorloopt (geen NameError/AttributeError).
+        self.reloads = []
+
+        async def _reload(entry_id):
+            self.reloads.append(entry_id)
+        gecko_entry = SimpleNamespace(config_entry_id="gecko_eid")
+        self.ns["er"] = SimpleNamespace(
+            async_get=lambda hass: SimpleNamespace(async_get=lambda eid: gecko_entry)
+        )
         self.calls = []
         self.ack = True
         self.fail_writes = False
@@ -81,6 +91,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
             states=self.states,
             services=SimpleNamespace(async_call=self.service, has_service=lambda domain, service: domain in ("notify", "persistent_notification")),
             async_create_task=self.create_task,
+            config_entries=SimpleNamespace(async_reload=_reload),
         )
         conf = {
             "poolex_climate": "poolex", "jacuzzi_climate": "gecko",
@@ -171,6 +182,74 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.c._grace_until = self.clock.value - 1  # grace verlopen
         await self.c._async_evaluate()
         self.assertIn(15, self.temperatures())
+
+    async def test_dead_gecko_link_unconfirmed_pump_reloads(self):
+        # fan.turn_on 'lukt' maar de pomp komt nooit aan — dode link.
+        self.states["pump"] = State("pump", "off")
+        self.states["compressor"] = State("compressor", "0")
+        self.tub(34)  # warmtevraag -> elke eval 'pomp aan'
+        await self.c._async_evaluate()
+        self.assertIsNotNone(self.c._gecko_pump_pending)
+        self.assertFalse(self.c._gecko_dead_link)
+        self.clock.value += self.ns["GECKO_CMD_CONFIRM_S"] - 1
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._gecko_dead_link)
+        self.clock.value += 2
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._gecko_dead_link)
+        await self.c._async_evaluate()
+        await asyncio.gather(*self.tasks)
+        self.assertIn("gecko_eid", self.reloads)
+
+    async def test_confirmed_pump_command_is_no_dead_link(self):
+        self.states["pump"] = State("pump", "off")
+        self.states["compressor"] = State("compressor", "0")
+        self.tub(34)
+        await self.c._async_evaluate()
+        self.assertIsNotNone(self.c._gecko_pump_pending)
+        self.states["pump"] = State("pump", "on")  # commando landde alsnog
+        self.clock.value += self.ns["GECKO_CMD_CONFIRM_S"] + 1
+        await self.c._async_evaluate()
+        self.assertIsNone(self.c._gecko_pump_pending)
+        self.assertFalse(self.c._gecko_dead_link)
+        self.assertFalse(self.reloads)
+
+    async def test_gecko_unavailable_flapping_reloads(self):
+        self.tub(34, state="unavailable")
+        for _ in range(self.ns["GECKO_FLAP_MIN_TICKS"]):
+            await self.c._async_evaluate()
+            self.clock.value += 30
+        self.assertTrue(self.c._gecko_flapping)
+        self.assertTrue(self.c._gecko_dead_link)
+        await self.c._async_evaluate()
+        await asyncio.gather(*self.tasks)
+        self.assertIn("gecko_eid", self.reloads)
+        # Herstel: oude ticks verlopen, de link geldt weer als levend.
+        self.tub(36)
+        self.clock.value += self.ns["GECKO_FLAP_WINDOW_S"] + 1
+        await self.c._async_evaluate()
+        self.assertFalse(self.c._gecko_flapping)
+        self.assertFalse(self.c._gecko_dead_link)
+
+    async def test_gecko_flap_burst_does_not_count(self):
+        # Een burst evals (state-change-triggers) in seconden is geen
+        # flap: de ticks moeten minimaal MIN_SPAN uit elkaar liggen.
+        self.tub(34, state="unavailable")
+        for _ in range(self.ns["GECKO_FLAP_MIN_TICKS"]):
+            await self.c._async_evaluate()
+        self.assertFalse(self.c._gecko_flapping)
+        self.assertFalse(self.c._gecko_dead_link)
+
+    async def test_frozen_gecko_signature_notifies_no_reload(self):
+        notified = []
+        self.c._notify_once = lambda key, active, *a: notified.append(key) if active else None
+        self.tub(36)
+        await self.c._async_evaluate()  # legt de signatuur vast
+        self.clock.value += self.ns["GECKO_FROZEN_S"] + 1
+        self.tub(36)  # 'vers' gerapporteerd maar exact dezelfde waarde
+        await self.c._async_evaluate()
+        self.assertIn("gecko_frozen", notified)
+        self.assertFalse(self.reloads)  # bevroren = melden, nog geen reload
 
     async def test_unknown_compressor_does_not_stop_pump(self):
         self.states["compressor"].state = "unavailable"
@@ -1669,6 +1748,66 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         await self.c._set_watercare_opt("Away")
         calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
         self.assertEqual(calls, ["Away"])
+
+    async def test_watercare_multiword_dead_skips_doomed_retry(self):
+        """Bewezen niet-landende multi-word wordt niet opnieuw geprobeerd."""
+        self.states["watercare"].attributes["options"] = ["Away", "Super Savings"]
+
+        async def silent(domain, service, data, **kw):
+            self.calls.append((domain, service, dict(data)))
+            return True
+        self.c.hass.services.async_call = silent  # stille faal: landt nooit
+        self.ns["WATERCARE_VERIFY_S"] = 0
+        await self.c._set_watercare_opt("Super Savings")
+        self.assertIn("super savings", self.c._watercare_dead_multiword)
+        self.calls.clear()
+        self.states["watercare"].state = "Savings"
+        await self.c._set_watercare_opt("Super Savings")
+        calls = [d["option"] for _, s, d in self.calls if s == "select_option"]
+        self.assertEqual(calls, ["Away"])  # direct de fallback, geen retry
+
+    async def test_watercare_multiword_call_failure_is_not_proof(self):
+        """Een gefaalde service-call is geen bewijs — later opnieuw proberen."""
+        self.states["watercare"].attributes["options"] = ["Away", "Super Savings"]
+
+        async def fail(domain, service, data, **kw):
+            self.calls.append((domain, service, dict(data)))
+            raise RuntimeError("down")
+        self.c.hass.services.async_call = fail
+        self.assertFalse(await self.c._set_watercare_opt("Super Savings"))
+        self.assertNotIn("super savings", self.c._watercare_dead_multiword)
+
+    async def test_critical_notify_uses_critical_channel_and_normal(self):
+        """Kritieke meldingen gaan naar beide services, met ALARM+data."""
+        self.c.conf["critical_notify_service"] = "alarm_phone"
+        await self.c._async_notify("brake_failed", "Titel", "Bericht")
+        calls = [(s, d) for dom, s, d in self.calls if dom == "notify"]
+        self.assertEqual([s for s, _ in calls], ["alarm_phone", "notify"])
+        for _, d in calls:
+            self.assertTrue(d["title"].startswith("ALARM:"))
+            self.assertIn("data", d)
+
+    async def test_normal_notify_skips_critical_channel(self):
+        """Gewone meldingen gebruiken alleen de normale service."""
+        self.c.conf["critical_notify_service"] = "alarm_phone"
+        await self.c._async_notify("too_warm", "Titel", "Bericht")
+        calls = [(s, d) for dom, s, d in self.calls if dom == "notify"]
+        self.assertEqual([s for s, _ in calls], ["notify"])
+        self.assertEqual(calls[0][1]["title"], "Titel")
+        self.assertNotIn("data", calls[0][1])
+
+    async def test_critical_notify_failure_falls_to_persistent(self):
+        """Beide notify-services dood -> persistent_notification met ALARM."""
+        async def fail(domain, service, data, **kw):
+            if domain == "notify":
+                raise RuntimeError("down")
+            return await self.service(domain, service, data, **kw)
+        self.c.hass.services.async_call = fail
+        self.c.conf["critical_notify_service"] = "alarm_phone"
+        await self.c._async_notify("flow_fault", "Titel", "Bericht")
+        pn = [d for dom, s, d in self.calls if dom == "persistent_notification"]
+        self.assertEqual(len(pn), 1)
+        self.assertTrue(pn[0]["title"].startswith("ALARM:"))
 
     def _listener_ns(self):
         """Exec alleen de init-functies; injecteer de live-opties set."""

@@ -37,6 +37,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CIRC_LOSS_GRACE_S,
+    CONF_CRITICAL_NOTIFY_SERVICE,
     CONF_JACUZZI_CLIMATE,
     CONF_MAINT_SAVED,
     CONF_MAINTENANCE,
@@ -56,6 +57,7 @@ from .const import (
     COOLDOWN_MAX_PAUSE_S,
     COOLDOWN_MIN_DROP_K,
     COOLDOWN_MIN_H,
+    CRITICAL_NOTIFY_KEYS,
     DEFAULT_AMBIENT_SENSOR,
     DEFAULT_MIX_ENABLED,
     DEFAULT_MIX_INTERVAL_MIN,
@@ -67,6 +69,11 @@ from .const import (
     DOMAIN,
     EVAL_INTERVAL_S,
     PUMP_RESCUE_RETRY_S,
+    GECKO_CMD_CONFIRM_S,
+    GECKO_FLAP_MIN_SPAN_S,
+    GECKO_FLAP_MIN_TICKS,
+    GECKO_FLAP_WINDOW_S,
+    GECKO_FROZEN_S,
     GECKO_MAINT_TARGET_C,
     FAILSAFE_NOTIFY_MIN,
     FAILSAFE_NOTIFY_WINDOW_S,
@@ -209,6 +216,17 @@ class JacuzziController:
         self._retour_offset = RETOUR_GUARD_K
         self._retour_samples = 0  # eigen leermetingen sinds (her)start
         self._failsafe_hits: list[float] = []  # ts van pomp-dips (demping)
+        # Dode-link detectie: de geckoal-coordinator meldt 'success' met
+        # gecachte data op een gestorven MQTT-sessie, dus _fresh ziet die
+        # uitval niet. Eigen signalen: flap-ticks, een bevroren signatuur
+        # en pomp-commando's die bevestigd uitblijven.
+        self._gecko_unavail_ticks: list[float] = []  # evals 'unavailable'
+        self._gecko_flapping = False  # >= min ticks in het lopende venster
+        self._gecko_dead_link = False  # flap/onbevestigde commando's = dood
+        self._gecko_pump_pending: float | None = None  # eerste pomp-aan ts
+        self._gecko_sig: tuple | None = None  # laatste geldige signatuur
+        self._gecko_frozen_since: float | None = None  # ts van sig-wijziging
+        self._watercare_dead_multiword: set[str] = set()  # bewezen niet-landend
         self.compressor_on: bool | None = None  # onbekend is niet uit
         self.heating_enabled = valid_target  # ongeldige oude config start veilig uit
         self.demand_temp: float | None = None  # bron-temp voor het display
@@ -484,18 +502,49 @@ class JacuzziController:
 
     async def _async_notify(self, key: str, title: str, message: str) -> None:
         """Een ontbrekende notifier mag geen onafgevangen achtergrondtaak geven."""
-        service = self.conf.get(CONF_NOTIFY_SERVICE, "")
         has_service = getattr(self.hass.services, "has_service", lambda *args: False)
-        if service and has_service("notify", service):
+        critical = key in CRITICAL_NOTIFY_KEYS
+        if critical:
+            title = f"ALARM: {title}"
+        # Kritieke meldingen gaan naar BEIDE services: de gewone én een
+        # aparte kritieke (andere telefoon/kanaal/sirene), zodat ze tussen
+        # de te-negeren statusmeldingen uitsteken. Faal van de een
+        # blokkeert de ander niet.
+        services = []
+        if critical:
+            crit = self.conf.get(CONF_CRITICAL_NOTIFY_SERVICE, "")
+            if crit:
+                services.append(crit)
+        normal = self.conf.get(CONF_NOTIFY_SERVICE, "")
+        if normal and normal not in services:
+            services.append(normal)
+        data = {"title": title, "message": message}
+        if critical:
+            # Escalatie-hints voor de Companion-app: Android high-priority
+            # heads-up op een eigen kanaal; iOS probeert een critical
+            # alert (vereist toestemming in de app). Andere backends
+            # negeren de extra data gewoon.
+            data["data"] = {
+                "ttl": 0,
+                "priority": "high",
+                "importance": "high",
+                "channel": "jacuzzi_alarm",
+                "push": {"interruption-level": "critical"},
+            }
+        sent = False
+        for service in services:
+            if not has_service("notify", service):
+                _LOGGER.warning("notify.%s niet beschikbaar", service)
+                continue
             try:
                 await asyncio.wait_for(self.hass.services.async_call(
-                    "notify", service, {"title": title, "message": message}, blocking=True,
+                    "notify", service, data, blocking=True,
                 ), 10)
-                return
+                sent = True
             except Exception as err:
-                _LOGGER.warning("notify.%s mislukt: %s — persistente melding proberen", service, err)
-        elif service:
-            _LOGGER.warning("notify.%s niet beschikbaar — persistente melding proberen", service)
+                _LOGGER.warning("notify.%s mislukt: %s", service, err)
+        if sent:
+            return
         if has_service("persistent_notification", "create"):
             try:
                 await asyncio.wait_for(self.hass.services.async_call(
@@ -772,13 +821,14 @@ class JacuzziController:
         self._pump_cmd_at = now
         return True
 
-    def _maybe_reload_gecko(self) -> None:
+    def _maybe_reload_gecko(self, reason: str = "onbereikbaar") -> None:
         """Reload de Gecko config-entry als die in een dode sessie hangt.
 
         De geckoal-integratie herstelt een runtime-gestorven
         MQTT-verbinding niet altijd vanzelf (503 tijdens token-refresh ->
-        'No active connection'). Een reload forceert een nieuwe sessie —
-        net als handmatig herstarten. Max 1x per RELOAD_COOLDOWN_S.
+        'No active connection'; ook het gelekte-reconnect-storm patroon
+        van 05/11). Een reload forceert een nieuwe sessie — net als
+        handmatig herstarten. Max 1x per RELOAD_COOLDOWN_S.
         """
         now = time.monotonic()
         if now - self._last_gecko_reload < RELOAD_COOLDOWN_S:
@@ -790,8 +840,7 @@ class JacuzziController:
             return
         self._last_gecko_reload = now
         _LOGGER.warning(
-            "Gecko-entities al %d s unavailable — config entry reloaden",
-            UNREACHABLE_S,
+            "Gecko-link dood (%s) — config entry reloaden", reason
         )
         self.hass.async_create_task(
             self.hass.config_entries.async_reload(entity_entry.config_entry_id)
@@ -999,18 +1048,30 @@ class JacuzziController:
             return False
         if sel.state == match:
             return True  # staat al goed
-        # Probeer altijd eerst de exact geadverteerde optie: geckolib >=1.0
-        # accepteert de multi-word strings ('Super Energy Saving') direct.
-        # Alleen als de stand aantoonbaar NIET landt (oudere versies faalden
-        # stilletjes) vallen we terug op een single-word optie.
-        if not await self._select_watercare(match):
-            return False
-        if await self._watercare_landed(match):
-            self._notify_once("watercare_multiword", False, "", "")
-            return True
-        if " " not in match.strip():
-            return False  # single-word faalde echt: retry later
-        last_word = match.strip().lower().split()[-1]
+        # Multi-word opties ('Super Savings') proberen we één keer echt:
+        # geckolib >=1.0 accepteert ze direct. Landt zo'n optie
+        # aantoonbaar NIET (oudere versies faalden stilletjes/luid), dan
+        # onthouden we dat op deze installatie en gaan we voortaan direct
+        # naar de single-word fallback — geen garandeerd-dode call, geen
+        # 8 s wachttijd en geen ERROR-spam meer per piek/onderhoud.
+        norm = " ".join(match.strip().lower().split())
+        if " " not in norm:
+            if not await self._select_watercare(match):
+                return False
+            return await self._watercare_landed(match)
+        if norm not in self._watercare_dead_multiword:
+            if not await self._select_watercare(match):
+                return False  # mislukte call ≠ bewijs: later herkansen
+            if await self._watercare_landed(match):
+                self._notify_once("watercare_multiword", False, "", "")
+                return True
+            self._watercare_dead_multiword.add(norm)
+            _LOGGER.info(
+                "Watercare-optie %r landt niet op deze installatie — "
+                "voortaan direct de single-word fallback",
+                match,
+            )
+        last_word = norm.split()[-1]
         single = [o for o in options if " " not in str(o).strip()]
         fallback = (
             next(
@@ -1203,8 +1264,66 @@ class JacuzziController:
             "De jacuzzi-entities rapporteren al 15 min niet — Gecko-cloud "
             "onbereikbaar of in.touch offline? Check de app.",
         )
+        # De geckoal-coordinator meldt 'success' met gecachte data op een
+        # gestorven MQTT-sessie: entities blijven vers/beschikbaar terwijl
+        # commando's nooit landen — _fresh alleen dekt die uitval niet.
+        # Eigen signalen: unavailable-flapjes in een lopend venster (hier)
+        # en pomp-commando's die bevestigd uitblijven (_gecko_dead_link,
+        # verderop bij de circulatie-aansturing bepaald).
+        now_mono = time.monotonic()
+        if jacuzzi is not None and jacuzzi.state in ("unavailable", "unknown"):
+            self._gecko_unavail_ticks.append(now_mono)
+        while (
+            self._gecko_unavail_ticks
+            and now_mono - self._gecko_unavail_ticks[0] > GECKO_FLAP_WINDOW_S
+        ):
+            self._gecko_unavail_ticks.pop(0)
+        # Een burst evals (state-change-triggers) mag geen flap tellen:
+        # de ticks moeten ook minimaal MIN_SPAN uit elkaar liggen.
+        self._gecko_flapping = (
+            len(self._gecko_unavail_ticks) >= GECKO_FLAP_MIN_TICKS
+            and now_mono - self._gecko_unavail_ticks[0] >= GECKO_FLAP_MIN_SPAN_S
+        )
+        # Een echte kuipmeting drift altijd (resolutie 0.5 K): urenlang
+        # exact dezelfde toestand+temperatuur is vrijwel zeker de stale-
+        # cache van een dode link. Alleen melden — reload volgt pas bij
+        # flap- of commando-bewijs, een reload is bij geckoal niet gratis.
+        sig = (
+            (
+                jacuzzi.state,
+                jacuzzi.attributes.get("current_temperature"),
+                jacuzzi.attributes.get("temperature"),
+            )
+            if jacuzzi is not None
+            and jacuzzi.state not in ("unavailable", "unknown")
+            else None
+        )
+        if sig is None:
+            self._gecko_sig = None
+            self._gecko_frozen_since = None
+        elif sig != self._gecko_sig:
+            self._gecko_sig = sig
+            self._gecko_frozen_since = now_mono
+        self._notify_once(
+            "gecko_frozen",
+            self._gecko_frozen_since is not None
+            and now_mono - self._gecko_frozen_since >= GECKO_FROZEN_S,
+            "Jacuzzi: Gecko-data bevroren",
+            "De kuip-entity rapporteert al uren exact dezelfde waarde — "
+            "waarschijnlijk een dode Gecko-link met gecachte data. "
+            "Herladen van de integratie of een HA-herstart herstelt dit.",
+        )
+        self._notify_once(
+            "gecko_dead_link",
+            self._gecko_dead_link,
+            "Jacuzzi: Gecko-link vermoedelijk dood",
+            "Entities lijken beschikbaar/vers maar de link flappt of "
+            "pomp-commando's landen niet — de config entry wordt herladen.",
+        )
         if gecko_down:
-            self._maybe_reload_gecko()
+            self._maybe_reload_gecko("15 min geen rapportage")
+        elif self._gecko_dead_link:
+            self._maybe_reload_gecko("flap/onbevestigde commando's")
         # Ontbrekende entities zijn GEEN reden om de rem over te slaan.
         # Onbekend betekent: niet verwarmen; aanwezige pomp mag blijven nakoelen.
         # Startup-grace: entities die nog niet bestaan (upstream-integratie
@@ -1329,6 +1448,11 @@ class JacuzziController:
                 await self._set_watercare_opt(standby)
             elif standby and sel is not None and sel.state == standby:
                 self._since_true("maint_wc_grace", False, 0)
+            # Onderhoud geeft zelf geen pomp-commando's; een eerder
+            # onbevestigde aanvraag telt hier niet als dode-link-bewijs.
+            # De flap-detectie blijft wél gelden.
+            self._gecko_pump_pending = None
+            self._gecko_dead_link = self._gecko_flapping
             return
 
         # Piekvenster stateful bijhouden: niet op de exacte tijd-triggers
@@ -1886,6 +2010,8 @@ class JacuzziController:
             and self._pump_cmd_ready(urgent=True)
         ):
             _LOGGER.warning("Circulatie nodig maar Gecko-pomp staat uit — pomp herstellen")
+            if self._gecko_pump_pending is None:
+                self._gecko_pump_pending = time.monotonic()
             restored = await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
             )
@@ -1951,11 +2077,29 @@ class JacuzziController:
                 setpoint,
                 bron,
             )
+            if self._gecko_pump_pending is None:
+                self._gecko_pump_pending = time.monotonic()
             if await self._async_call(
                 "fan", "turn_on", {"entity_id": self.conf["pump_fan"]}
             ):
                 self.pump_by_us = True
                 self._pump_off_pending = False
+
+        # Een geslaagde service-call bewijst niets: bij een dode Gecko-
+        # link 'lukt' fan.turn_on maar komt de pomp nooit aan (gezien op
+        # prod: urenlang 'pomp aan' terwijl de MQTT-link dood was). Alleen
+        # een pomp-'on' van de entity zelf telt als bevestiging. Zodra de
+        # vraag wegvalt is een openstaande bevestiging niet meer nodig.
+        want_pump = circulation_needed or (
+            (self.warmtevraag and can_restore)
+            or (bool(self._verify_until) and not safety_reason)
+        )
+        if pump_on or not want_pump:
+            self._gecko_pump_pending = None
+        self._gecko_dead_link = self._gecko_flapping or (
+            self._gecko_pump_pending is not None
+            and time.monotonic() - self._gecko_pump_pending >= GECKO_CMD_CONFIRM_S
+        )
 
         # Zelfs als de kuip al langer op temperatuur is, minstens 3 min
         # circuleren NA bevestigde compressorstop. Een oude temp-timer
