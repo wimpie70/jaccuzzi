@@ -93,6 +93,22 @@ OPTIONAL_ENTITY_CONFIG = selector.EntitySelectorConfig(
 )
 
 
+class _ClearableEntitySelector(selector.EntitySelector):
+    """EntitySelector die '' en None accepteert voor optionele velden.
+
+    Een geleegde picker komt als '' of null binnen; de stock-selector
+    weigert '' ('not a valid entity ID') waardoor het veld feitelijk
+    verplicht werd. Wrappen in vol.Any breekt de frontend-serialisatie
+    (rendert als constante zonder widget), dus subklassen.
+    """
+
+    def __call__(self, data):
+        """Pass ''/None door; echte keuzes naar de stock-validatie."""
+        if data in (None, ""):
+            return data
+        return super().__call__(data)
+
+
 def _schema(current: dict | None = None) -> vol.Schema:
     """Build the config/options schema; `current` overrides defaults."""
     current = current or {}
@@ -153,11 +169,10 @@ def _schema(current: dict | None = None) -> vol.Schema:
     )] = selector.NumberSelector(
         selector.NumberSelectorConfig(min=500, max=10000, step=100, unit_of_measurement="W")
     )
-    # Optionele power-sensoren: '' (wat de frontend stuurt voor een leeg
-    # optioneel entity-veld) moet door de validatie — EntitySelector weigert
-    # '' als 'not a valid entity ID', waardoor het veld feitelijk verplicht
-    # werd. Geen default='': voluptuous valideert defaults ook.
-    # behandelen ''/afwezig als 'niet ingesteld'.
+    # Geen default='' bij lege velden: voluptuous valideert defaults ook
+    # en '' faalt in EntitySelector ('not a valid entity ID'). De
+    # clearable-selector variant accepteert ''/null op submit; consumers
+    # behandelen afwezig/leeg als 'niet ingesteld'.
     for key in OPTIONAL_ENTITY_KEYS:
         current_value = current.get(key)
         marker = (
@@ -165,9 +180,7 @@ def _schema(current: dict | None = None) -> vol.Schema:
             if current_value
             else vol.Optional(key)
         )
-        data[marker] = vol.Any(
-            "", selector.EntitySelector(OPTIONAL_ENTITY_CONFIG)
-        )
+        data[marker] = _ClearableEntitySelector(OPTIONAL_ENTITY_CONFIG)
     return vol.Schema(data)
 
 
@@ -185,8 +198,8 @@ def _normalize(user_input: dict) -> dict:
     for key in (CONF_PEAK_START, CONF_PEAK_END, CONF_WARM_UNTIL):
         user_input[key] = _normalize_hhmm(user_input[key])
     for key in OPTIONAL_ENTITY_KEYS:
-        if user_input.get(key) == "":
-            user_input.pop(key)
+        if user_input.get(key) in ("", None):
+            user_input.pop(key, None)
     return user_input
 
 
