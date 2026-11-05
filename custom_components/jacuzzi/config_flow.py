@@ -193,8 +193,9 @@ class JacuzziConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        """Return the options flow."""
-        return JacuzziOptionsFlow(config_entry)
+        """Return the options flow; config_entry arg nooit doorgeven —
+        HA zet self.config_entry zelf (expliciete pass faalt >=2025.12)."""
+        return JacuzziOptionsFlow()
 
 
 class JacuzziOptionsFlow(OptionsFlow):
