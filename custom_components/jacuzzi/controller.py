@@ -178,6 +178,10 @@ class JacuzziController:
         self.heat_loss_samples: list[dict] = []  # laatste N metingen
         self._run_start: tuple[float, float] | None = None  # monotonic, kuip
         self.heat_gain_samples: list[dict] = []  # laatste N stooksnelheden
+        # Werkelijk tijdstip van de laatste beeindigde run — het
+        # doorstook-advies gebruikt dit als start van de afkoeling
+        # (de gesimuleerde blokgrens onderschat die duur structureel).
+        self.last_run_stop: datetime | None = None
         # Gemeten landing bij einde blokkade (kuip vs doel) — terugkoppeling
         # van het doorstook-advies op de werkelijkheid.
         self.peak_landing: dict | None = None
@@ -1768,6 +1772,7 @@ class JacuzziController:
                 # nieuw venster, nooit door retries binnen dezelfde start.
                 self._flow_start_until = 0.0
                 self._flow_start_attempted = False
+                self.last_run_stop = dt_util.now()
                 self._learn_heat_gain(tub_temp, now)
             # Onmiddellijk remmen op stopgrens, sensoruitval, hvac uit of
             # storing. Er is bewust GEEN minimale looptijd voor een stop.

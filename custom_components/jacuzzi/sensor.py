@@ -55,6 +55,7 @@ ENERGY_SENSORS = (
 # tuya-local entities van de Poolex (vaste id's in deze setup)
 POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
 POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
+POOLEX_DEFROST_SENSOR = "binary_sensor.pool_heat_pump_defrost"
 POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
 POOLEX_FAN_MAX_RPM = 1000.0
@@ -68,6 +69,10 @@ POOLEX_COMPRESSOR_MAX = 100.0
 # Kuip als calorimeter: kg water x 4.186 kJ/kgK -> J per K
 TUB_MASS_KG = 1500.0
 TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K
+# Fysieke band voor het thermisch-vermogen-schatting: de unit levert
+# <10 kW, passief verlies <2 kW. Sensorstappen/defrost-rebound in DP16
+# kloppen de regressie-helling op naar honderden kW — waardeloos.
+HEATING_POWER_MAX_KW = 25.0
 # Regressie-window: korter dan ~20 min is de 0.5 °C-quantisatie ruis,
 # langer dan ~45 min dempt hij echte verandering te veel.
 HEATING_WINDOW_S = 30 * 60
@@ -548,7 +553,10 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         if denom <= 0:
             return None
         slope = (n * sxy - sx * sy) / denom  # K/s
-        return round(slope * TUB_HEAT_CAPACITY / 1000.0, 2)
+        kw = slope * TUB_HEAT_CAPACITY / 1000.0
+        if abs(kw) > HEATING_POWER_MAX_KW:
+            return None
+        return round(kw, 2)
 
 
 class JacuzziHeatLossSensor(RestoreSensor):
@@ -668,6 +676,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
     MIX_PUMPS = ("fan.jaccuzzi_pump_1", "fan.jaccuzzi_pump_2")
     MIX_DELAY_S = 15      # na einde puls: overgang voorbij
     MIX_WINDOW_S = 180    # daarna geldt inlaat als bulk
+    MIN_WINDOW_WH = 100   # markers < ~5 min uit elkaar zijn ruis, geen COP
 
     def __init__(self, entry: JacuzziConfigEntry) -> None:
         """Bind aan de config entry."""
@@ -690,6 +699,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
         self._last_wh: float | None = None      # Wh-stand bij T_eind
         self._mix_active = False
         self._mix_end = 0.0
+        self._window_sampled = False  # al een meting uit dit venster
         self._cop: float | None = None
         self._cycle_kwh_th: float | None = None
         self._cycle_kwh_el: float | None = None
@@ -772,6 +782,10 @@ class JacuzziCopEstimateSensor(SensorEntity):
                 return True
         return False
 
+    def _defrosting(self) -> bool:
+        st = self.hass.states.get(POOLEX_DEFROST_SENSOR)
+        return st is not None and st.state == "on"
+
     # --- cyclus-state-machine ----------------------------------------
 
     def _tick(self) -> None:
@@ -803,13 +817,23 @@ class JacuzziCopEstimateSensor(SensorEntity):
             self._cycle = False
             self._finalize()
 
-        # Post-mix-venster: 15-180 s na einde van een meng-puls
+        # Post-mix-venster: 15-180 s na einde van een meng-puls.
+        # Per venster EEN meting — eerst T_start, daarna per nieuw
+        # venster T_eind. Eerste én laatste marker uit hetzelfde
+        # venster halen meet alleen de 0.1-0.3 K-stappen van DP16 in
+        # enkele minuten (waargenomen: COP 10-28 op 40-50 Wh).
+        # Tijdens defrost is de waterzijde de verdamper — de inlaat is
+        # dan geen bulk, dus het venster levert geen marker.
         in_window = (
             self._cycle
             and not mixing
             and self.MIX_DELAY_S <= now - self._mix_end <= self.MIX_WINDOW_S
+            and not self._defrosting()
         )
-        if in_window:
+        if not in_window:
+            self._window_sampled = False
+        elif not self._window_sampled:
+            self._window_sampled = True
             temp = self._inlet_temp(conf)
             if temp is not None:
                 if self._first_temp is None:
@@ -830,7 +854,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
             return
         dt_k = self._last_temp - self._first_temp
         d_wh = self._last_wh - self._first_wh
-        if d_wh <= 10 or dt_k <= 0:  # min 10 Wh + positieve stijging
+        if d_wh <= self.MIN_WINDOW_WH or dt_k <= 0:
             return
         kwh_th = dt_k * TUB_HEAT_CAPACITY / 3.6e6
         kwh_el = d_wh / 1000.0
@@ -1172,6 +1196,14 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
             d_cur = float(conf.get(CONF_OVERSHOOT, DEFAULT_OVERSHOOT_K))
         except (TypeError, ValueError):
             d_cur = DEFAULT_OVERSHOOT_K
+        # De coast gebeurt op stop-temperatuur (niet de huidige, vaak
+        # koudere kuip) en de buitenlucht zakt 's avonds richting de
+        # nachtmeting — middag-buiten en huidige kuip onderschatten
+        # de ΔT en dus het verlies tijdens de coast structureel.
+        stop_temp = min(doel + d_cur, MAX_TUB_C)
+        amb_mean = samples[-1].get("ambient_mean_c")
+        amb_coast = (amb + amb_mean) / 2 if amb_mean is not None else amb
+        rate_coast = self._cooling_rate_k_h(samples, stop_temp, amb_coast)
         gain_samples = self._controller.heat_gain_samples
         heat_rate = gain_samples[-1]["rate_k_h"] if gain_samples else None
         last_stop = end_b = b_start = None
@@ -1180,7 +1212,6 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
             # Simuleer de vraag-cyclus met de huidige doorstook tot de
             # blokkade; de tijdstippen van runs/stops bepaalt mee hoe
             # lang de laatste stop moet overbruggen.
-            stop_temp = min(doel + d_cur, MAX_TUB_C)
             t, b = now, tub
             demand = self._controller.warmtevraag or b < doel - marge
             for _ in range(40):
@@ -1202,31 +1233,45 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
                     demand = False
                 else:
                     cool_h = (
-                        max((b - (doel - marge)) / rate, 0)
-                        if rate > 1e-6
+                        max((b - (doel - marge)) / rate_coast, 0)
+                        if rate_coast > 1e-6
                         else float("inf")
                     )
                     t_low = t + timedelta(hours=cool_h)
                     if t_low >= start:
-                        b -= rate * (start - t).total_seconds() / 3600
+                        b -= rate_coast * (start - t).total_seconds() / 3600
                         t = start
                     else:
                         b, t = doel - marge, t_low
                         demand = True
             b_start = b
-            end_b = b - rate * (horizon - t).total_seconds() / 3600
+            end_b = b - rate_coast * (horizon - t).total_seconds() / 3600
         # De doorstook die de laatste stop had moeten halen: verlies
         # van die stop tot de horizon. Geen run meer voor de blokkade
-        # -> de huidige warmte moet het hele traject dragen.
-        coast_h = (
-            (horizon - last_stop).total_seconds() / 3600
-            if last_stop is not None
-            else (coast_block_h if in_block else hours_end)
-        )
-        advies = min(max(rate * coast_h, 0.0), MAX_TUB_C - doel)
+        # -> de huidige warmte moet het hele traject dragen. De coast
+        # start bij de LAATSTE bekende stop — gesimuleerd of werkelijk;
+        # in de blokkade is dat vrijwel altijd ruim vóór de blokgrens.
+        real_stop = self._controller.last_run_stop
+        stops = [
+            s
+            for s in (last_stop, real_stop)
+            if s is not None and horizon - timedelta(hours=30) < s < horizon
+        ]
+        if stops:
+            coast_h = (horizon - max(stops)).total_seconds() / 3600
+            coast_rate = rate_coast
+        elif in_block:
+            coast_h, coast_rate = coast_block_h, rate_coast
+        else:
+            coast_h, coast_rate = hours_end, rate
+        advies = min(max(coast_rate * coast_h, 0.0), MAX_TUB_C - doel)
         return {
             "advies": round(advies, 1),
             "rate": round(rate, 2),
+            "rate_coast": round(rate_coast, 2),
+            "last_stop_real": (
+                real_stop.strftime("%m-%d %H:%M") if real_stop else None
+            ),
             "hours_end": round(hours_end, 1),
             "hours_start": round(hours_start, 1),
             "block_h": round(block_h, 1),
@@ -1259,12 +1304,14 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
         conf = {**self._entry.data, **self._entry.options}
         return {
             "afkoeling_k_per_u": advies["rate"],
+            "afkoeling_coast_k_per_u": advies["rate_coast"],
             "blokkade_uren": advies["block_h"],
             "verlies_vanaf_nu_k": advies["loss_now"],
             "uren_tot_horizon": advies["hours_end"],
             "uren_tot_piek_start": advies["hours_start"],
             "stijgsnelheid_k_per_u": advies["heat_rate"],
             "laatste_stop_gesimuleerd": advies["last_stop"],
+            "laatste_stop_werkelijk": advies["last_stop_real"],
             "runs_voor_blokkade": advies["runs"],
             "bulk_bij_blokkade_start": advies["b_start"],
             "verwacht_bij_horizon_huidig": advies["end_b"],
