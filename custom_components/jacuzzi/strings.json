@@ -166,6 +166,9 @@
       "poolex_max_watts": {
         "name": "Poolex max opgenomen vermogen"
       },
+      "poolex_defrost_watts": {
+        "name": "Poolex vermogen tijdens defrost"
+      },
       "inlet_compensation_k": {
         "name": "Inlet sensor compensation"
       }

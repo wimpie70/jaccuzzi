@@ -30,6 +30,7 @@ from .const import (
     CONF_PEAK_END,
     CONF_PEAK_START,
     CONF_POOLEX_CLIMATE,
+    CONF_POOLEX_DEFROST_W,
     CONF_POOLEX_MAX_W,
     CONF_POOLEX_POWER_SENSOR,
     CONF_PUMP_FAN,
@@ -39,6 +40,7 @@ from .const import (
     DEFAULT_OVERSHOOT_K,
     DEFAULT_PEAK_END,
     DEFAULT_PEAK_START,
+    DEFAULT_POOLEX_DEFROST_W,
     DEFAULT_POOLEX_MAX_W,
     DEFAULT_TEMP_MARGIN,
     DEFAULT_WARM_UNTIL,
@@ -386,6 +388,9 @@ class JacuzziPoolexCompressorSensor(SensorEntity):
 class JacuzziPoolexPowerEstimateSensor(SensorEntity):
     """Geschat elektrisch vermogen: duty% × ingesteld max-vermogen.
 
+    Tijdens defrost geldt het ingestelde defrost-vermogen — de unit
+    draait dan ~50% duty mét de ventilator uit; het duty-model zou
+    ~30-40% te hoog zitten (NRG-meting nov 2026: ~640 W echt).
     Geen echte meting — kalibreer number.jacuzzi_poolex_max_watts met
     een P1-stap of energiemeter. Te gebruiken als bron voor de
     poolex_energy-integratie (Configure → Poolex vermogenssensor).
@@ -414,7 +419,7 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """duty_frac × max_w; 0 als de unit uit staat."""
+        """Defrost -> defrost_w; anders duty_frac × max_w (0 als uit)."""
         conf = {**self._entry.data, **self._entry.options}
         duty = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
         if duty is None or duty.state in ("unavailable", "unknown"):
@@ -423,14 +428,24 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
             frac = min(1.0, float(duty.state) / POOLEX_COMPRESSOR_MAX)
         except ValueError:
             return None
+        if frac > 0 and self._defrost_on():
+            return round(
+                float(conf.get(CONF_POOLEX_DEFROST_W, DEFAULT_POOLEX_DEFROST_W))
+            )
         max_w = float(conf.get(CONF_POOLEX_MAX_W, DEFAULT_POOLEX_MAX_W))
         return round(frac * max_w)
 
+    def _defrost_on(self) -> bool:
+        st = self.hass.states.get(POOLEX_DEFROST_SENSOR)
+        return st is not None and st.state == "on"
+
     async def async_added_to_hass(self) -> None:
-        """Volg de duty-sensor."""
+        """Volg de duty- en defrost-sensoren."""
         self.async_on_remove(
             async_track_state_change_event(
-                self.hass, [POOLEX_COMPRESSOR_SENSOR], self._on_source
+                self.hass,
+                [POOLEX_COMPRESSOR_SENSOR, POOLEX_DEFROST_SENSOR],
+                self._on_source,
             )
         )
 
@@ -668,8 +683,10 @@ class JacuzziCopEstimateSensor(SensorEntity):
     buitenlucht gekoppeld), wat COP ~0.9 gaf bij een echte ~3. De
     heated-stream-offset van de Gecko deelt weg in het verschil.
     Elektrisch: geconfigureerde vermogensmeter als die bestaat (echte
-    meting incl. defrost-verbruik), anders duty% x max_W. Meet ook het
-    jacuzzi-circuit mee als die sensor is ingesteld -> systeem-COP.
+    meting incl. defrost-verbruik), anders duty% x max_W — met tijdens
+    defrost het ingestelde defrost-vermogen i.p.v. de duty-schatting.
+    Meet ook het jacuzzi-circuit mee als die sensor is ingesteld ->
+    systeem-COP.
     """
 
     _attr_should_poll = False
@@ -740,6 +757,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
         conf = {**self._entry.data, **self._entry.options}
         watched = [
             POOLEX_COMPRESSOR_SENSOR,
+            POOLEX_DEFROST_SENSOR,
             conf[CONF_POOLEX_CLIMATE],
             conf[CONF_JACUZZI_CLIMATE],
             conf[CONF_PUMP_FAN],
@@ -792,6 +810,10 @@ class JacuzziCopEstimateSensor(SensorEntity):
         except ValueError:
             return None
         self._power_src = "duty_schatting"
+        if frac > 0 and self._defrosting():
+            # defrost-vermogen is een vaste kalibratiewaarde — de
+            # ventilator staat uit en ~50% duty overschat de teller
+            return float(conf.get(CONF_POOLEX_DEFROST_W, DEFAULT_POOLEX_DEFROST_W))
         return frac * float(conf.get(CONF_POOLEX_MAX_W, DEFAULT_POOLEX_MAX_W))
 
     def _tub_temp(self, conf: dict) -> float | None:
