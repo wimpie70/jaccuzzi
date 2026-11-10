@@ -57,6 +57,8 @@ POOLEX_FAN_SENSOR = "sensor.pool_heat_pump_fan_speed"
 POOLEX_PROBLEM_SENSOR = "binary_sensor.pool_heat_pump_problem"
 POOLEX_DEFROST_SENSOR = "binary_sensor.pool_heat_pump_defrost"
 POOLEX_COMPRESSOR_SENSOR = "sensor.pool_heat_pump_compressor_duty_cycle"
+# eigen binary sensor — fixed object_id via ENTITY_OBJECT_IDS
+JACUZZI_ELEMENT_SENSOR = "binary_sensor.jacuzzi_element_heating"
 # ventilator ~1000 rpm max -> als % plotten naast compressor duty cycle
 POOLEX_FAN_MAX_RPM = 1000.0
 # compressor duty cycle is een percentage 0-100 (waargenomen 16-76
@@ -440,12 +442,13 @@ class JacuzziPoolexPowerEstimateSensor(SensorEntity):
 class JacuzziHeatingPowerSensor(SensorEntity):
     """Thermisch vermogen in de kuip, geschat uit de temperatuurhelling.
 
-    De kuip is de calorimeter (1500 kg x 4.19 kJ/kgK). Als bron de
-    Poolex-*inlaat* (DP16): tijdens circulatie is dat het gemengde
-    kuip-water zelf — representatiever dan de Gecko-sensor die op een
-    vaste plek bij de pack meet (stratificatie). Alleen sampelen als
-    de pomp draait: stilstaand water in de wisselaar is géén kuip-temp.
-    Least-squares over 30 min i.v.m. 0.1 °C-quantisatie + cloud-jitter.
+    De kuip is de calorimeter (1500 kg x 4.19 kJ/kgK). Bron is de
+    Gecko-kuipmeting: tijdens circulatie leest die de verhitte stroom
+    met een vrijwel constante offset die wegdeelt in de helling. DP16
+    bleek onbruikbaar — de pocket volgt de bulk-stijging ~3x te traag
+    en zijn trapjes joegen de regressie naar >400.000 kW.
+    Alleen sampelen als de pomp draait + compressor stookt.
+    Least-squares over 30 min i.v.m. 0.5 °C-quantisatie + cloud-jitter.
     Negatief = warmteverlies i.p.v. opbrengst.
     """
 
@@ -485,9 +488,9 @@ class JacuzziHeatingPowerSensor(SensorEntity):
             return False
 
     def _bulk_temp(self) -> float | None:
-        """Inlaat-temp (DP16) — tijdens circulatie het gemengde bulk."""
+        """Kuip-temp (Gecko) — de echte bulk tijdens circulatie."""
         conf = {**self._entry.data, **self._entry.options}
-        state = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
+        state = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
         if state is None:
             return None
         try:
@@ -501,12 +504,12 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         return self._kw
 
     async def async_added_to_hass(self) -> None:
-        """Sample op inlaat-updates, pomp-stand én controller-ticks."""
+        """Sample op kuip-updates, pomp-stand én controller-ticks."""
         conf = {**self._entry.data, **self._entry.options}
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
-                [conf[CONF_POOLEX_CLIMATE], conf[CONF_PUMP_FAN]],
+                [conf[CONF_JACUZZI_CLIMATE], conf[CONF_PUMP_FAN]],
                 self._on_sample,
             )
         )
@@ -658,12 +661,15 @@ class JacuzziHeatLossSensor(RestoreSensor):
 
 
 class JacuzziCopEstimateSensor(SensorEntity):
-    """COP per stook-cyclus: ΔT bulk-water / geïntegreerd elektrisch verbruik.
+    """COP per stook-cyclus: ΔT kuip (Gecko) / geïntegreerd elektrisch verbruik.
 
-    Alleen post-mix-metingen tellen als bulk-temp: de massagepompen
-    (niet de circulatie) mengen de kuip echt. Tijdens een cyclus:
-    eerste post-mix-venster -> T_start, elk volgend venster -> T_eind,
-    Wh_est loopt door. Bij cyclus-einde: COP = ΔT*Q / ΔWh.
+    Bulk-bron is de Gecko-kuipmeting in een post-mix-venster — DP16
+    bleek de echte bulk-stijging ~3x te traag te volgen (pocket aan
+    buitenlucht gekoppeld), wat COP ~0.9 gaf bij een echte ~3. De
+    heated-stream-offset van de Gecko deelt weg in het verschil.
+    Elektrisch: geconfigureerde vermogensmeter als die bestaat (echte
+    meting incl. defrost-verbruik), anders duty% x max_W. Meet ook het
+    jacuzzi-circuit mee als die sensor is ingesteld -> systeem-COP.
     """
 
     _attr_should_poll = False
@@ -690,19 +696,26 @@ class JacuzziCopEstimateSensor(SensorEntity):
             "name": "Jacuzzi",
         }
         self._cycle = False
-        self._cum_wh = 0.0          # geïntegreerde Wh deze cyclus
+        self._cum_wh = 0.0          # geïntegreerde Poolex-Wh deze cyclus
+        self._cum_wh_jac = 0.0      # idem jacuzzi-circuit (als gemeten)
         self._last_ts: float | None = None
         self._last_w: float | None = None
+        self._last_w_jac: float | None = None
         self._first_temp: float | None = None   # T_start (post-mix)
         self._first_wh: float | None = None     # Wh-stand bij T_start
+        self._first_wh_jac: float | None = None
         self._last_temp: float | None = None    # T_eind (post-mix)
         self._last_wh: float | None = None      # Wh-stand bij T_eind
+        self._last_wh_jac: float | None = None
         self._mix_active = False
         self._mix_end = 0.0
         self._window_sampled = False  # al een meting uit dit venster
+        self._element_seen = False  # gecko-element verwarmde mee deze cyclus
+        self._power_src: str | None = None  # 'meter' of 'duty_schatting'
         self._cop: float | None = None
         self._cycle_kwh_th: float | None = None
         self._cycle_kwh_el: float | None = None
+        self._cycle_kwh_jac: float | None = None
         self._cycle_dt: float | None = None
 
     @property
@@ -717,22 +730,26 @@ class JacuzziCopEstimateSensor(SensorEntity):
             "delta_t_k": self._cycle_dt,
             "kwh_thermisch": self._cycle_kwh_th,
             "kwh_elektrisch": self._cycle_kwh_el,
+            "kwh_elektrisch_jacuzzi": self._cycle_kwh_jac,
+            "vermogensbron_poolex": self._power_src,
+            "gecko_element_actief": self._element_seen,
         }
 
     async def async_added_to_hass(self) -> None:
         """Volg alle bronnen + controller-ticks voor de integratie."""
         conf = {**self._entry.data, **self._entry.options}
+        watched = [
+            POOLEX_COMPRESSOR_SENSOR,
+            conf[CONF_POOLEX_CLIMATE],
+            conf[CONF_JACUZZI_CLIMATE],
+            conf[CONF_PUMP_FAN],
+            *self.MIX_PUMPS,
+        ]
+        for key in (CONF_POOLEX_POWER_SENSOR, CONF_JACUZZI_POWER_SENSOR):
+            if conf.get(key):
+                watched.append(conf[key])
         self.async_on_remove(
-            async_track_state_change_event(
-                self.hass,
-                [
-                    POOLEX_COMPRESSOR_SENSOR,
-                    conf[CONF_POOLEX_CLIMATE],
-                    conf[CONF_PUMP_FAN],
-                    *self.MIX_PUMPS,
-                ],
-                self._on_event,
-            )
+            async_track_state_change_event(self.hass, watched, self._on_event)
         )
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_event)
@@ -748,7 +765,25 @@ class JacuzziCopEstimateSensor(SensorEntity):
     def _conf(self) -> dict:
         return {**self._entry.data, **self._entry.options}
 
+    def _meter_w(self, conf: dict, key: str) -> float | None:
+        """Vermogen uit een geconfigureerde metersensor (W), of None."""
+        src = conf.get(key)
+        if not src:
+            return None
+        st = self.hass.states.get(src)
+        if st is None or st.state in ("unavailable", "unknown"):
+            return None
+        try:
+            return max(0.0, float(st.state))
+        except ValueError:
+            return None
+
     def _power_w(self, conf: dict) -> float | None:
+        """Poolex-vermogen: echte meter als die er is, anders duty-schatting."""
+        w = self._meter_w(conf, CONF_POOLEX_POWER_SENSOR)
+        if w is not None:
+            self._power_src = "meter"
+            return w
         st = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
         if st is None:
             return None
@@ -756,10 +791,12 @@ class JacuzziCopEstimateSensor(SensorEntity):
             frac = min(1.0, float(st.state) / POOLEX_COMPRESSOR_MAX)
         except ValueError:
             return None
+        self._power_src = "duty_schatting"
         return frac * float(conf.get(CONF_POOLEX_MAX_W, DEFAULT_POOLEX_MAX_W))
 
-    def _inlet_temp(self, conf: dict) -> float | None:
-        st = self.hass.states.get(conf[CONF_POOLEX_CLIMATE])
+    def _tub_temp(self, conf: dict) -> float | None:
+        """Kuip-temp (Gecko) — de enige bron die de bulk-stijging volgt."""
+        st = self.hass.states.get(conf[CONF_JACUZZI_CLIMATE])
         if st is None:
             return None
         try:
@@ -792,13 +829,23 @@ class JacuzziCopEstimateSensor(SensorEntity):
         now = time.monotonic()
         conf = self._conf()
 
-        # Wh integreren (links-Riemann) zolang de cyclus loopt
-        if self._cycle and self._last_w is not None and self._last_ts is not None:
+        # Wh integreren (links-Riemann) zolang de cyclus loopt —
+        # Poolex én het jacuzzi-circuit (element/pompen) als die
+        # metersensor is ingesteld: systeem-COP, geen halve waarheid.
+        if self._cycle and self._last_ts is not None:
             dt_h = (now - self._last_ts) / 3600.0
             if 0 < dt_h < 1:
-                self._cum_wh += self._last_w * dt_h
+                if self._last_w is not None:
+                    self._cum_wh += self._last_w * dt_h
+                if self._last_w_jac is not None:
+                    self._cum_wh_jac += self._last_w_jac * dt_h
         self._last_ts = now
         self._last_w = self._power_w(conf)
+        self._last_w_jac = self._meter_w(conf, CONF_JACUZZI_POWER_SENSOR)
+
+        el = self.hass.states.get(JACUZZI_ELEMENT_SENSOR)
+        if self._cycle and el is not None and el.state == "on":
+            self._element_seen = True
 
         # Massagepomp: on -> off markeert einde van een meng-puls
         mixing = self._mixing()
@@ -811,8 +858,12 @@ class JacuzziCopEstimateSensor(SensorEntity):
             # cyclus-start: buffer/integratie op nul
             self._cycle = True
             self._cum_wh = 0.0
+            self._cum_wh_jac = 0.0
             self._first_temp = self._first_wh = None
+            self._first_wh_jac = None
             self._last_temp = self._last_wh = None
+            self._last_wh_jac = None
+            self._element_seen = False
         elif not heating and self._cycle:
             self._cycle = False
             self._finalize()
@@ -834,14 +885,16 @@ class JacuzziCopEstimateSensor(SensorEntity):
             self._window_sampled = False
         elif not self._window_sampled:
             self._window_sampled = True
-            temp = self._inlet_temp(conf)
+            temp = self._tub_temp(conf)
             if temp is not None:
                 if self._first_temp is None:
                     self._first_temp = temp
                     self._first_wh = self._cum_wh
+                    self._first_wh_jac = self._cum_wh_jac
                 else:
                     self._last_temp = temp
                     self._last_wh = self._cum_wh
+                    self._last_wh_jac = self._cum_wh_jac
 
     def _finalize(self) -> None:
         """Cyclus afgelopen — COP uitrekenen uit de markers."""
@@ -854,14 +907,20 @@ class JacuzziCopEstimateSensor(SensorEntity):
             return
         dt_k = self._last_temp - self._first_temp
         d_wh = self._last_wh - self._first_wh
+        d_wh_jac = (
+            self._last_wh_jac - self._first_wh_jac
+            if self._first_wh_jac is not None and self._last_wh_jac is not None
+            else 0.0
+        )
         if d_wh <= self.MIN_WINDOW_WH or dt_k <= 0:
             return
         kwh_th = dt_k * TUB_HEAT_CAPACITY / 3.6e6
-        kwh_el = d_wh / 1000.0
+        kwh_el = (d_wh + d_wh_jac) / 1000.0
         self._cop = round(kwh_th / kwh_el, 1)
         self._cycle_dt = round(dt_k, 1)
         self._cycle_kwh_th = round(kwh_th, 2)
         self._cycle_kwh_el = round(kwh_el, 3)
+        self._cycle_kwh_jac = round(d_wh_jac / 1000.0, 3)
 
 
 class JacuzziPoolexFaultSensor(SensorEntity):
