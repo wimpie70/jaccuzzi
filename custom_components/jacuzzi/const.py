@@ -24,6 +24,7 @@ CONF_SOLAR_SENSOR = "solar_sensor"
 CONF_SOLAR_MIN_W = "solar_min_watts"
 CONF_POOLEX_POWER_SENSOR = "poolex_power_sensor"
 CONF_POOLEX_MAX_W = "poolex_max_watts"
+CONF_POOLEX_DEFROST_W = "poolex_defrost_watts"
 CONF_JACUZZI_POWER_SENSOR = "jacuzzi_power_sensor"
 CONF_POOLEX_ALWAYS_ON = "poolex_always_on"
 CONF_MIX_ENABLED = "mix_enabled"
@@ -64,6 +65,10 @@ DEFAULT_NORMAL_SETPOINT = 38.0    # °C — fallback als geen opgeslagen setpoin
 DEFAULT_SOLAR_MIN_W = 2000        # W — PV-overschot voor vervroegd piek-einde
 DEFAULT_POOLEX_ALWAYS_ON = True   # buiten piek nooit hvac 'off' toestaan
 DEFAULT_POOLEX_MAX_W = 1600       # W bij duty 100% — kalibreer met meter
+# NRG/P1-meting nov 2026: tijdens defrost trekt de unit ~640 W op zijn
+# fase (ventilator uit, compressor gedwarsbomen op ~50% duty). Het
+# duty-model zou dan ~800-900 W schatten — te hoog, dus vaste waarde.
+DEFAULT_POOLEX_DEFROST_W = 650
 SOLAR_SURPLUS_S = 600             # overschot moet 10 min aanhouden
 
 # !!! MEETFAIT — niet opnieuw bediscussiëren !!!
@@ -222,6 +227,7 @@ ENTITY_OBJECT_IDS = {
     # number
     "solar_min_watts": "jacuzzi_solar_surplus_threshold",
     "poolex_max_watts": "jacuzzi_poolex_max_watts",
+    "poolex_defrost_watts": "jacuzzi_poolex_defrost_watts",
     "mix_interval_min": "jacuzzi_mixing_interval",
     "inlet_compensation_k": "jacuzzi_inlet_sensor_compensation",
     "mix_pulse_s": "jacuzzi_mixing_pulse_duration",
