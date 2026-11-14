@@ -91,7 +91,7 @@ views:
         dan kort terug (defrost: ventilator uit, uitlaat-temp dip) — dat is normaal
         en geen storing.
 
-        **Piekblokkade**: tussen start/einde → setpoint 15 °C + Watercare Super Savings.
+        **Piekblokkade**: tussen start/einde → setpoint 15 °C + Watercare naar de ingestelde piek-stand.
         PV-overschot ≥ drempel gedurende 10 min → vervroegd einde. De blokkade herstelt
         zichzelf ook als HA een grens mist.
 
@@ -255,7 +255,7 @@ views:
         name: Watercare
         tooltip: >-
           Gecko watercare-stand. Tijdens de piekblokkade zet de
-          regeling deze op de piek-stand (Super Savings); daarna weer
+          regeling deze op de ingestelde piek-stand; daarna weer
           terug.
       - type: custom:button-card
         template: jac_row
@@ -436,10 +436,10 @@ views:
       - type: custom:button-card
         template: jac_row
         entity: select.jaccuzzi_watercare_mode
-        name: Watercare (piek = Super Savings)
+        name: Watercare
         tooltip: >-
           Gecko watercare-stand — tijdens de blokkade gezet op de
-          piek-stand; daarna hersteld.
+          ingestelde piek-stand; daarna hersteld.
       - type: heading
         heading: Meng-puls
         heading_style: title

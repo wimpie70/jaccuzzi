@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 from . import JacuzziConfigEntry
 from .controller import SIGNAL_UPDATE, _parse_hhmm
 from .const import (
+    CIRC_LOSS_GRACE_S,
     ENTITY_OBJECT_IDS,
     CONF_JACUZZI_CLIMATE,
     CONF_JACUZZI_POWER_SENSOR,
@@ -77,9 +78,12 @@ TUB_HEAT_CAPACITY = TUB_MASS_KG * 4186.0  # J/K
 # <10 kW, passief verlies <2 kW. Sensorstappen/defrost-rebound in DP16
 # kloppen de regressie-helling op naar honderden kW — waardeloos.
 HEATING_POWER_MAX_KW = 25.0
-# Regressie-window: korter dan ~20 min is de 0.5 °C-quantisatie ruis,
-# langer dan ~45 min dempt hij echte verandering te veel.
-HEATING_WINDOW_S = 30 * 60
+# Regressie-window: de Gecko-kuipsensor stapt in 0.5 °C-kwanten (bij
+# ~1.5-2 K/h elke 15-20 min een stap, ~30 min rond een defrost). In
+# een 30 min-venster passen dus nooit 4 stap-punten (3 intervallen ≈
+# 47 min -> bleef permanent 'unknown' op prod nov 2026); 60 min houdt
+# 3-4 stappen binnen boord zonder over oude runs heen te middelen.
+HEATING_WINDOW_S = 60 * 60
 HEATING_MIN_S = 10 * 60  # minimaal zoveel data voor een betrouwbare helling
 # Sampelen zolang compressor stookt + circulatie draait — de inlaat is
 # dan continu het gemengde bulk-water. Buffer wissen als de stook
@@ -488,13 +492,33 @@ class JacuzziHeatingPowerSensor(SensorEntity):
             "name": "Jacuzzi",
         }
         self._samples: deque[tuple[float, float]] = deque()
+        self._pump_off_since: float | None = None
         self._kw: float | None = None
 
-    def _heating_conditions(self) -> bool:
-        """Compressor stookt én circulatie draait."""
+    def _pump_on(self) -> bool:
+        """True als de geconfigureerde circulatiepomp aan staat."""
         conf = {**self._entry.data, **self._entry.options}
         pump = self.hass.states.get(conf[CONF_PUMP_FAN])
-        if pump is None or pump.state != "on":
+        return pump is not None and pump.state == "on"
+
+    def _heating_conditions(self, now: float) -> bool:
+        """Compressor stookt én circulatie draait (met pomp-dip-gratie).
+
+        Het Gecko-pack dropt de waterfall-pomp op een eigen ~2-uurs
+        timer; de controller herstelt die binnen <1 s (CIRC_LOSS_GRACE_S).
+        Zonder gratie wiste elke 200 ms pomp-dip op 13:59/14:29 de hele
+        regressiebuffer midden in de stookrun.
+        """
+        if self._pump_on():
+            self._pump_off_since = None
+            pump_ok = True
+        else:
+            if self._pump_off_since is None:
+                self._pump_off_since = now
+            pump_ok = bool(self._samples) and (
+                now - self._pump_off_since < CIRC_LOSS_GRACE_S
+            )
+        if not pump_ok:
             return False
         compressor = self.hass.states.get(POOLEX_COMPRESSOR_SENSOR)
         try:
@@ -540,13 +564,13 @@ class JacuzziHeatingPowerSensor(SensorEntity):
 
     def _sample(self) -> None:
         now = time.monotonic()
-        if not self._heating_conditions():
+        if not self._heating_conditions(now):
             # Stook stopt -> cyclus voorbij; schone helling bij de
             # volgende run i.p.v. overgang te mengen.
             self._samples.clear()
             self._kw = None
             return
-        temp = self._bulk_temp()
+        temp = self._bulk_temp() if self._pump_on() else None
         if temp is not None:
             # Alleen toevoegen als de waarde veranderde — anders wordt
             # de regressie door dubbele punten vertekend.
@@ -726,6 +750,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
         self._last_wh_jac: float | None = None
         self._mix_active = False
         self._mix_end = 0.0
+        self._pump_off_since: float | None = None
         self._window_sampled = False  # al een meting uit dit venster
         self._element_seen = False  # gecko-element verwarmde mee deze cyclus
         self._power_src: str | None = None  # 'meter' of 'duty_schatting'
@@ -826,13 +851,30 @@ class JacuzziCopEstimateSensor(SensorEntity):
         except (TypeError, ValueError, KeyError):
             return None
 
-    def _conditions(self, conf: dict) -> bool:
-        """Compressor stookt én circulatie draait."""
+    def _pump_on(self, conf: dict) -> bool:
+        """True als de geconfigureerde circulatiepomp aan staat."""
         pump = self.hass.states.get(conf[CONF_PUMP_FAN])
+        return pump is not None and pump.state == "on"
+
+    def _conditions(self, conf: dict, now: float) -> bool:
+        """Compressor stookt én circulatie draait (met pomp-dip-gratie).
+
+        Het Gecko-pack schakelt de circulatiepomp na 2 u kort uit; de
+        controller zet hem binnen ~0.2 s weer aan (CIRC_LOSS_GRACE_S).
+        Zonder gratie sloot die sub-seconde dip de COP-cyclus elke dag
+        om 13:59:23 halverwege de run af.
+        """
+        if self._pump_on(conf):
+            self._pump_off_since = None
+            pump_ok = True
+        else:
+            if self._pump_off_since is None:
+                self._pump_off_since = now
+            pump_ok = self._cycle and (
+                now - self._pump_off_since < CIRC_LOSS_GRACE_S
+            )
         w = self._power_w(conf)
-        return pump is not None and pump.state == "on" and (
-            w is not None and w > 0
-        )
+        return pump_ok and (w is not None and w > 0)
 
     def _mixing(self) -> bool:
         for ent in self.MIX_PUMPS:
@@ -875,7 +917,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
             self._mix_end = now
         self._mix_active = mixing
 
-        heating = self._conditions(conf)
+        heating = self._conditions(conf, now)
         if heating and not self._cycle:
             # cyclus-start: buffer/integratie op nul
             self._cycle = True
@@ -899,6 +941,7 @@ class JacuzziCopEstimateSensor(SensorEntity):
         # dan geen bulk, dus het venster levert geen marker.
         in_window = (
             self._cycle
+            and self._pump_on(conf)
             and not mixing
             and self.MIX_DELAY_S <= now - self._mix_end <= self.MIX_WINDOW_S
             and not self._defrosting()
