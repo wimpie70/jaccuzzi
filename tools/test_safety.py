@@ -1958,6 +1958,57 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(found - canoniek), [])
         self.assertGreater(len(found), 10)  # sanity: matcht echt wat
 
+    async def test_short_sensor_blip_resumes_running_compressor_without_dwell(self):
+        """15 s Gecko-unavailable bij 37 °C (op weg naar 39 °C): remt direct,
+        maar pakt de lopende run meteen weer op zodra de meting terug is."""
+        self.c.conf["temp_margin"] = 0.0
+        self.c.conf["overshoot"] = 2.0
+        self.c._run_active = True
+        self.states["compressor"].state = "75"
+        alerts = []
+        self.c._notify_once = lambda *a: alerts.append(a)
+        self.tub(37.0, state="unavailable")
+        await self.c._async_evaluate()
+        self.assertFalse(self.c.warmtevraag)
+        self.assertIn(15, self.temperatures())
+        self.assertTrue(self.c._sensor_interrupted_run)
+        self.assertNotIn("sensor_invalid", {a[0] for a in alerts if a[1]})
+        self.calls.clear()
+        self.clock.value += 15
+        self.states["poolex"].attributes["temperature"] = 15
+        self.states["compressor"].state = "68"
+        self.tub(37.0)
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.warmtevraag)
+        self.assertTrue(self.c._run_active)
+        self.assertFalse(self.c._sensor_interrupted_run)
+        self.assertIn(37, self.temperatures())
+
+    async def test_longer_sensor_outage_waits_dwell_but_keeps_overshoot_hysteresis(self):
+        """Stopt de compressor tijdens sensoruitval, dan geldt de 30 min rust,
+        maar blijft het doel 37+2=39 °C (niet 'geen vraag' op 37.0 °C)."""
+        self.c.conf["temp_margin"] = 0.0
+        self.c.conf["overshoot"] = 2.0
+        self.c._run_active = True
+        self.tub(37.0, state="unavailable")
+        await self.c._async_evaluate()
+        self.assertIn(15, self.temperatures())
+        self.states["poolex"].attributes["temperature"] = 15
+        self.states["compressor"].state = "0"
+        self.clock.value += 180
+        self.tub(37.0)
+        self.calls.clear()
+        await self.c._async_evaluate()
+        self.assertTrue(self.c.warmtevraag)
+        self.assertFalse(self.c._run_active)
+        self.assertTrue(self.c._sensor_interrupted_run)
+        self.assertNotIn(37, self.temperatures())
+        self.clock.value += 1800
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.assertFalse(self.c._sensor_interrupted_run)
+        self.assertIn(37, self.temperatures())
+
 
 if __name__ == "__main__":
     unittest.main()

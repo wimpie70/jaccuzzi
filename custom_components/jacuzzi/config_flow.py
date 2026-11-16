@@ -142,7 +142,7 @@ def _schema(current: dict | None = None) -> vol.Schema:
     data[vol.Required(
         CONF_TEMP_MARGIN, default=current.get(CONF_TEMP_MARGIN, DEFAULT_TEMP_MARGIN)
     )] = selector.NumberSelector(
-        selector.NumberSelectorConfig(min=0.1, max=5.0, step=0.1, unit_of_measurement="°C")
+        selector.NumberSelectorConfig(min=0.0, max=5.0, step=0.1, unit_of_measurement="°C")
     )
     data[vol.Required(
         CONF_PEAK_MODE, default=DEFAULT_PEAK_MODE
@@ -167,7 +167,7 @@ def _schema(current: dict | None = None) -> vol.Schema:
     data[vol.Optional(
         CONF_SOLAR_MIN_W, default=current.get(CONF_SOLAR_MIN_W, DEFAULT_SOLAR_MIN_W)
     )] = selector.NumberSelector(
-        selector.NumberSelectorConfig(min=500, max=10000, step=100, unit_of_measurement="W")
+        selector.NumberSelectorConfig(min=0, max=10000, step=100, unit_of_measurement="W")
     )
     # Geen default='' bij lege velden: voluptuous valideert defaults ook
     # en '' faalt in EntitySelector ('not a valid entity ID'). De
@@ -230,6 +230,18 @@ class JacuzziOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         """Show the options form."""
         if user_input is not None:
-            return self.async_create_entry(data=_normalize(user_input))
+            # Bewaar opties van dashboard-entities (doorstook, max_watts,
+            # defrost_watts, meng-parameters, onderhoud) die niet in dit
+            # formulier staan; anders wist elke Configure-save ze terug
+            # naar de defaults (gezien op prod 14/11: doorstook 2.0 -> 1.0,
+            # max_watts 1800 -> 1600).
+            base = {
+                k: v
+                for k, v in self.config_entry.options.items()
+                if k not in OPTIONAL_ENTITY_KEYS
+            }
+            return self.async_create_entry(
+                data=_normalize({**base, **user_input})
+            )
         current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(step_id="init", data_schema=_schema(current))
