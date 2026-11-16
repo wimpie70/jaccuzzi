@@ -240,6 +240,7 @@ class JacuzziController:
         self._started = False
         self._stopped = False
         self._run_active = False
+        self._sensor_interrupted_run = False
         self._brake_since: float | None = None
         self._brake_write_at = -ACTUATOR_RETRY_S
         self._brake_lockout = False
@@ -449,6 +450,7 @@ class JacuzziController:
         failed = False
         if (not low or (self._brake_lockout and not confirmed)) and now - self._brake_write_at >= ACTUATOR_RETRY_S:
             self._brake_write_at = now
+            self._actuator_at = -ACTUATOR_RETRY_S
             failed = not await self._async_call(
                 "climate",
                 "set_temperature",
@@ -468,6 +470,7 @@ class JacuzziController:
             self._brake_lockout = True
             self.warmtevraag = False
             self._run_active = False
+            self._sensor_interrupted_run = False
             self._suppress_reason = (
                 "rem (herstel nodig)" if confirmed else "stop niet bevestigd"
             )
@@ -1183,6 +1186,7 @@ class JacuzziController:
             },
         )
         self._run_active = False
+        self._sensor_interrupted_run = False
         self._demand_suppressed = True
         self._suppress_reason = "piek-einde"
         # Geen eerdere landing op 'warm tot' -> piek-einde is de horizon.
@@ -1350,6 +1354,7 @@ class JacuzziController:
         if self.conf.get(CONF_MAINTENANCE):
             self.warmtevraag = False
             self._run_active = False
+            self._sensor_interrupted_run = False
             self._flow_start_until = 0.0
             self._flow_start_attempted = False
             # Ook onderhoud gebruikt 15 °C, NOOIT hvac off. Tot de
@@ -1555,8 +1560,19 @@ class JacuzziController:
         # Ook een extreme numerieke kuipwaarde (>45) mag geen fallback
         # activeren: deze waarde blijft een reden voor een onmiddellijke stop.
         overheated = math.isfinite(tub_temp) and tub_temp >= guard_temp
+        if self._sensor_interrupted_run and (
+            overheated
+            or not self.heating_enabled
+            or peak_block
+            or not settings_ok
+            or (tub_valid and demand_temp >= stop_temp)
+        ):
+            if tub_valid and demand_temp >= stop_temp:
+                self._learn_heat_gain(tub_temp, time.monotonic())
+            self._sensor_interrupted_run = False
+        run_latch = self._run_active or self._sensor_interrupted_run
         heat_wanted = tub_valid and (
-            demand_temp < setpoint - margin or (self._run_active and demand_temp < stop_temp)
+            demand_temp < setpoint - margin or (run_latch and demand_temp < stop_temp)
         )
         self._flow_fault_due = self._since_true(
             "flow_fault", pump_on and problem_active and self._fresh(problem), FLOW_FAULT_OFF_S
@@ -1660,7 +1676,7 @@ class JacuzziController:
             )
         self.warmtevraag = not safety_reason and (
             demand_temp < setpoint - margin
-            or (self._run_active and demand_temp < stop_temp)
+            or (run_latch and demand_temp < stop_temp)
         )
         self._track_cooldown(tub_temp, tub_valid, pump_on, compressor_on is not False)
 
@@ -1766,6 +1782,14 @@ class JacuzziController:
             if safety_reason != "stop niet bevestigd":
                 self._verify_tub_at_stop = None
         if not self.warmtevraag:
+            sensor_abort = (
+                self._run_active
+                and safety_reason == "sensoruitval"
+                and not overheated
+                and self.heating_enabled
+                and not peak_block
+                and settings_ok
+            )
             if self._run_active:
                 # De lopende startpoging is nu geëindigd. Een volgende
                 # run krijgt pas na de gewone rust/stopbevestiging een
@@ -1773,7 +1797,18 @@ class JacuzziController:
                 self._flow_start_until = 0.0
                 self._flow_start_attempted = False
                 self.last_run_stop = dt_util.now()
-                self._learn_heat_gain(tub_temp, now)
+                if not sensor_abort:
+                    self._learn_heat_gain(tub_temp, now)
+            if sensor_abort:
+                # Korte Gecko-uitval midden in een stookrun (gezien op
+                # prod 16/11 14:44: 15 s unavailable bij kuip 37 °C op
+                # weg naar stopgrens): wel meteen remmen op 15 °C, maar
+                # de run-hysterese (tot stop_temp) vasthouden zodat de
+                # run bij terugkeer van de meting niet op 37.0 °C
+                # ('geen vraag') blijft steken.
+                self._sensor_interrupted_run = True
+            elif safety_reason != "sensoruitval":
+                self._sensor_interrupted_run = False
             # Onmiddellijk remmen op stopgrens, sensoruitval, hvac uit of
             # storing. Er is bewust GEEN minimale looptijd voor een stop.
             if self._run_active and not safety_reason and self._compressor_recently_on:
@@ -1794,8 +1829,22 @@ class JacuzziController:
             self._demand_suppressed = True
             self._learn_heat_gain(tub_temp, now)
             self._run_active = False
+            self._sensor_interrupted_run = False
+        # Herstelt een sensor-dip binnen CIRC_LOSS_GRACE_S terwijl de
+        # compressor nog draait, zet het setpoint dan meteen terug i.p.v.
+        # de compressor eerst tot stilstand te dwingen + 30 min te wachten.
+        quick_sensor_resume = (
+            self._sensor_interrupted_run
+            and self.warmtevraag
+            and compressor_on is True
+            and pump_on
+            and not poolex_off
+            and not self._brake_lockout
+            and not self._verify_until
+            and (now - self._suppress_at < CIRC_LOSS_GRACE_S)
+        )
         brake_confirmed = False
-        if self._demand_suppressed and not self._entity_grace:
+        if self._demand_suppressed and not self._entity_grace and not quick_sensor_resume:
             brake_confirmed = await self._brake()
 
         # Meng-check begint pas NA bevestigde compressorstop. De timer
@@ -1832,6 +1881,7 @@ class JacuzziController:
 
         can_restore = not poolex_off and (
             not self._demand_suppressed
+            or quick_sensor_resume
             or (
                 brake_confirmed
                 and not self._verify_until
@@ -1869,10 +1919,15 @@ class JacuzziController:
                     self.warmtevraag = False
                     await self._brake()
             if not self._brake_lockout:
-                if not self._run_active:
+                if not self._run_active and self._run_start is None:
                     self._run_start = (now, tub_temp)
-                new_session = not self._run_active and not self._verify_pending
+                new_session = (
+                    not self._run_active
+                    and not self._verify_pending
+                    and not self._sensor_interrupted_run
+                )
                 self._run_active = True
+                self._sensor_interrupted_run = False
                 self._rest_s = SP_SUPPRESS_REST_S
                 self._demand_suppressed = False
                 self._suppress_reason = ""
@@ -1925,7 +1980,11 @@ class JacuzziController:
         )
         self._notify_once(
             "sensor_invalid",
-            not sensors_ok and not self._entity_grace,
+            self._since_true(
+                "sensor_invalid_notify",
+                not sensors_ok and not self._entity_grace,
+                PROBLEM_DELAY_S,
+            ),
             "Jacuzzi: meting onbetrouwbaar",
             "Verwarming geblokkeerd: kuip/actuator/compressor/pomp/storingsmeting ontbreekt of is verouderd.",
         )
@@ -1947,6 +2006,7 @@ class JacuzziController:
             # De pomp-stop is hier een droogloop/lek-uitzondering, niet
             # het normale temperatuur-stopbeleid met nakoeling.
             self._run_active = False
+            self._sensor_interrupted_run = False
             self.warmtevraag = False
             self._demand_suppressed = True
             await self._brake()
@@ -2025,6 +2085,7 @@ class JacuzziController:
                 # actuator-doel niet laten staan bij mislukte flow-aanzet.
                 self.warmtevraag = False
                 self._run_active = False
+                self._sensor_interrupted_run = False
                 self._demand_suppressed = True
                 self._suppress_reason = "circulatieherstel mislukt"
                 await self._brake()

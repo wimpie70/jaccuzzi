@@ -590,7 +590,7 @@ class JacuzziHeatingPowerSensor(SensorEntity):
         n = len(pts)
         sx, sy = sum(xs), sum(ys)
         sxx = sum(x * x for x in xs)
-        sxy = sum(x * y for x, y in pts)
+        sxy = sum(x * y for x, y in zip(xs, ys))
         denom = n * sxx - sx * sx
         if denom <= 0:
             return None

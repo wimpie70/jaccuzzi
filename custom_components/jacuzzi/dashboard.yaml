@@ -574,11 +574,13 @@ views:
           basis voor afkoelvoorspellingen. Attributen: aantal metingen en
           het lopende meetvenster (open/uren/daling/blokkade).
     - type: history-graph
-      title: Warmteverlies (W/K)
+      title: Warmteverlies (W/K) & COP
       hours_to_show: 168
       entities:
       - entity: sensor.jacuzzi_heat_loss
         name: W/K
+      - entity: sensor.jacuzzi_cop_estimate
+        name: COP
       - entity: sensor.pool_heat_pump_temperature_2
         name: Buiten
       - entity: sensor.jacuzzi_tub_temperature
