@@ -160,13 +160,19 @@ class JacuzziTubTempSensor(SensorEntity):
             return None
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe op controller-updates."""
+        """Volg de bronmeting direct én controller-updates."""
+        conf = {**self._entry.data, **self._entry.options}
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
+            async_track_state_change_event(
+                self.hass, [conf[CONF_JACUZZI_CLIMATE]], self._on_source
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_source)
         )
 
     @callback
-    def _async_update(self) -> None:
+    def _on_source(self, *_args) -> None:
         self.async_write_ha_state()
 
 
@@ -209,13 +215,19 @@ class JacuzziPoolexInletTempSensor(SensorEntity):
             return None
 
     async def async_added_to_hass(self) -> None:
-        """Subscribe op controller-updates."""
+        """Volg de bronmeting direct én controller-updates."""
+        conf = {**self._entry.data, **self._entry.options}
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._async_update)
+            async_track_state_change_event(
+                self.hass, [conf[CONF_POOLEX_CLIMATE]], self._on_source
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._on_source)
         )
 
     @callback
-    def _async_update(self) -> None:
+    def _on_source(self, *_args) -> None:
         self.async_write_ha_state()
 
 
