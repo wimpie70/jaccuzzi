@@ -551,6 +551,7 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.tub(38.0)
         await self.c._async_evaluate()
         self.assertFalse(self.c._run_active)
+        self.assertEqual(self.c.last_run_stop_c, 38.0)
         self.assertEqual(len(self.c.heat_gain_samples), 1)
         self.assertEqual(self.c.heat_gain_samples[0]["rate_k_h"], 2.0)
         self.assertEqual(self.c.heat_gain_samples[0]["gain_k"], 2.0)
@@ -1951,6 +1952,79 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "async_setup_entry")
         body = ast.unparse(fn)
         self.assertLess(body.index("async_forward_entry_setups"), body.index("controller.async_start"))
+
+    def test_observed_coast_loss_corrects_stale_model(self):
+        """Advies gebruikt gemeten daling + resterend modelverlies."""
+        tree = ast.parse((ROOT / "sensor.py").read_text(encoding="utf-8"))
+        fns = {
+            node.name: node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name in {"_observed_coast_loss", "_advies"}
+        }
+        now = datetime(2026, 11, 17, 19, 0)
+        ns = {
+            "math": math,
+            "datetime": datetime,
+            "timedelta": timedelta,
+            "dt_util": SimpleNamespace(now=lambda: now),
+            "_parse_hhmm": self.ns["_parse_hhmm"],
+            "CONF_PEAK_START": "peak_start",
+            "CONF_PEAK_END": "peak_end",
+            "CONF_WARM_UNTIL": "warm_until",
+            "CONF_TEMP_MARGIN": "temp_margin",
+            "CONF_OVERSHOOT": "overshoot",
+            "DEFAULT_PEAK_START": "18:30",
+            "DEFAULT_PEAK_END": "13:00",
+            "DEFAULT_WARM_UNTIL": "20:00",
+            "DEFAULT_TEMP_MARGIN": 0.5,
+            "DEFAULT_OVERSHOOT_K": 1.0,
+            "MAX_TUB_C": 40.0,
+        }
+        module = ast.fix_missing_locations(
+            ast.Module(body=[fns["_observed_coast_loss"], fns["_advies"]], type_ignores=[])
+        )
+        exec(compile(module, "sensor_test", "exec"), ns)
+        horizon = datetime(2026, 11, 17, 20, 0)
+        measured, remaining = ns["_observed_coast_loss"](
+            38.5, 36.5, horizon, now, 0.2
+        )
+        self.assertEqual(measured, 2.0)
+        self.assertEqual(remaining, 0.2)
+        self.assertIsNone(
+            ns["_observed_coast_loss"](None, 36.5, horizon, now, 0.2)
+        )
+
+        conf = {
+            "peak_start": "18:30",
+            "peak_end": "13:00",
+            "warm_until": "20:00",
+            "temp_margin": 0.5,
+            "overshoot": 1.0,
+        }
+        sensor = SimpleNamespace(
+            _entry=SimpleNamespace(data={}, options=conf),
+            _controller=SimpleNamespace(
+                heat_loss_samples=[{
+                    "w_per_k": 14.0,
+                    "ambient_mean_c": 8.0,
+                    "at": "2026-11-17T13:00+01:00",
+                }],
+                heat_gain_samples=[{"rate_k_h": 2.15}],
+                heat_setpoint=37.0,
+                warmtevraag=False,
+                last_run_stop=datetime(2026, 11, 17, 16, 2),
+                last_run_stop_c=38.5,
+            ),
+            _tub_ambient=lambda: (36.5, 8.0),
+            _cooling_rate_k_h=lambda samples, tub, amb: (
+                samples[-1]["w_per_k"] * (tub - amb) * 3600 / 6_279_000
+            ),
+        )
+        advies = ns["_advies"](sensor)
+        # Model-only zou hier ongeveer 1.0 K adviseren; de werkelijke
+        # 2.0 K daling plus resterend verlies moet de ondergrens worden.
+        self.assertEqual(advies["observed_loss"], 2.0)
+        self.assertGreaterEqual(advies["advies"], 2.2)
 
     def test_temperature_mirrors_track_source_entities(self):
         """Kuip/inlaat mirrors schrijven direct bij bron-state-updates.

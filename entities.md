@@ -180,10 +180,14 @@ schrijven werken.
   doorstook, geleerde stooksnelheid (`heat_gain_samples`) en
   afkoelrate (W/K × ΔT) tot de blokkade; advies = verlies vanaf de
   gesimuleerde laatste stop tot de comfort-horizon — de doorstook
-  die die stop nodig had. De horizon is `warm_until`
-  (`time.jacuzzi_warm_until`, einde gebruiksavond, default 20:00),
-  of piek-einde als die eerder valt — daarna hervat de vraag
-  toch. Attributen: `laatste_stop_gesimuleerd`,
+  die die stop nodig had. In de blokkade wordt dat modeltraject
+  ondergrendeld door de al gemeten daling sinds de echte stop plus
+  resterend modelverlies, zodat een te oude W/K niet onderwaardeert.
+  De horizon is `warm_until` (`time.jacuzzi_warm_until`, einde
+  gebruiksavond, default 20:00), of piek-einde als die eerder valt —
+  daarna hervat de vraag toch. Attributen:
+  `laatste_stop_gesimuleerd`, `laatste_stop_temperatuur_c`,
+  `gemeten_verlies_sinds_stop_k`, `resterend_verlies_model_k`,
   `runs_voor_blokkade`, `bulk_bij_blokkade_start`,
   `verwacht_bij_horizon_huidig` (landing met huidige doorstook),
   `horizon` (`warm_tot`|`piek_einde`), `warm_tot`.
