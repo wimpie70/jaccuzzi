@@ -464,6 +464,18 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(15, self.temperatures())
         self.assertTrue(self.c.warmtevraag)
 
+    async def test_restart_adoption_at_nominal_target_keeps_overshoot_run(self):
+        # Adoptie op exact het gebruikersdoel: de lopende run blijft
+        # doorverwarmen tot target + overshoot in plaats van af te remmen.
+        self.c._demand_suppressed = True
+        self.c._suppress_at = self.clock.value
+        self.tub(37)
+        await self.c._async_evaluate()
+        self.assertTrue(self.c._run_active)
+        self.assertTrue(self.c.warmtevraag)
+        self.assertFalse(self.c.demand_suppressed)
+        self.assertNotIn(15, self.temperatures())
+
     async def test_restart_adoption_needs_running_evidence(self):
         # Geen draaiende compressor -> geen adoptie; de gewone
         # startup-rust/remming geldt.
@@ -1939,6 +1951,32 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         fn = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "async_setup_entry")
         body = ast.unparse(fn)
         self.assertLess(body.index("async_forward_entry_setups"), body.index("controller.async_start"))
+
+    def test_temperature_mirrors_track_source_entities(self):
+        """Kuip/inlaat mirrors schrijven direct bij bron-state-updates.
+
+        Alleen op de controller-dispatcher vertrouwen kan de history-line
+        achterblijven; de bron-state listener houdt de sensor zelf vers.
+        """
+        tree = ast.parse((ROOT / "sensor.py").read_text(encoding="utf-8"))
+        classes = {
+            node.name: node for node in tree.body
+            if isinstance(node, ast.ClassDef)
+        }
+        expected = {
+            "JacuzziTubTempSensor": "CONF_JACUZZI_CLIMATE",
+            "JacuzziPoolexInletTempSensor": "CONF_POOLEX_CLIMATE",
+        }
+        for class_name, conf_name in expected.items():
+            fn = next(
+                node for node in classes[class_name].body
+                if isinstance(node, ast.AsyncFunctionDef)
+                and node.name == "async_added_to_hass"
+            )
+            body = ast.unparse(fn)
+            self.assertIn("async_track_state_change_event", body, class_name)
+            self.assertIn(conf_name, body, class_name)
+            self.assertIn("async_dispatcher_connect", body, class_name)
 
     def test_dashboard_entity_ids_match_canonical_map(self):
         """Elke jacuzzi_* entity-ref in het dashboard is een canonieke id.

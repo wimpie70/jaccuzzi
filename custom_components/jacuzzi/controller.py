@@ -1674,6 +1674,7 @@ class JacuzziController:
                 demand_temp,
                 live_sp,
             )
+        run_latch = self._run_active or self._sensor_interrupted_run
         self.warmtevraag = not safety_reason and (
             demand_temp < setpoint - margin
             or (run_latch and demand_temp < stop_temp)
