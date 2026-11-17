@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import time
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -1135,6 +1136,31 @@ def _hours_until(conf: dict, key: str, default: str) -> float:
     return (target - now).total_seconds() / 3600
 
 
+def _observed_coast_loss(
+    stop_temp: float | None,
+    tub_temp: float | None,
+    horizon: datetime,
+    now: datetime,
+    model_rate_k_h: float,
+) -> tuple[float, float] | None:
+    """Gemeten verlies sinds de stop plus modelverlies tot de horizon."""
+    if (
+        stop_temp is None
+        or tub_temp is None
+        or not (
+            math.isfinite(stop_temp)
+            and math.isfinite(tub_temp)
+            and math.isfinite(model_rate_k_h)
+        )
+    ):
+        return None
+    remaining_h = max((horizon - now).total_seconds() / 3600, 0.0)
+    return (
+        max(stop_temp - tub_temp, 0.0),
+        max(model_rate_k_h * remaining_h, 0.0),
+    )
+
+
 class _ControllerSensor(SensorEntity):
     """Base: sensor die direct een controller-waarde exposeert.
 
@@ -1266,7 +1292,9 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
     echte laatste stop. Advies = gemeten W/K x huidige ΔT x uren
     vanaf die laatste stop tot de horizon ('warm tot', of piek-einde
     als die eerder valt) — precies de doorstook die die stop had
-    moeten halen. Zonder geleerde stooksnelheid
+    moeten halen. In de blokkade kan de al waargenomen daling sinds
+    de echte stop dat model alleen verhogen, nooit verlagen. Zonder
+    geleerde stooksnelheid
     valt hij terug op het verlies over de blokkade alleen.
     Begrensd zodat doel + advies nooit boven MAX_TUB_C uitkomt.
     Zonder afkoelingsmeting is er geen advies.
@@ -1388,25 +1416,49 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
         # start bij de LAATSTE bekende stop — gesimuleerd of werkelijk;
         # in de blokkade is dat vrijwel altijd ruim vóór de blokgrens.
         real_stop = self._controller.last_run_stop
+        real_stop_temp = self._controller.last_run_stop_c
         stops = [
             s
             for s in (last_stop, real_stop)
             if s is not None and horizon - timedelta(hours=30) < s < horizon
         ]
+        observed_loss = remaining_loss = None
         if stops:
-            coast_h = (horizon - max(stops)).total_seconds() / 3600
+            coast_stop = max(stops)
+            coast_h = (horizon - coast_stop).total_seconds() / 3600
             coast_rate = rate_coast
+            coast_loss = coast_rate * coast_h
+            if in_block and coast_stop == real_stop:
+                observed = _observed_coast_loss(
+                    real_stop_temp, tub, horizon, now, rate
+                )
+                if observed is not None:
+                    observed_loss, remaining_loss = observed
+                    coast_loss = max(
+                        coast_loss, observed_loss + remaining_loss
+                    )
         elif in_block:
-            coast_h, coast_rate = coast_block_h, rate_coast
+            coast_rate = rate_coast
+            coast_loss = coast_rate * coast_block_h
         else:
-            coast_h, coast_rate = hours_end, rate
-        advies = min(max(coast_rate * coast_h, 0.0), MAX_TUB_C - doel)
+            coast_rate = rate
+            coast_loss = coast_rate * hours_end
+        advies = min(max(coast_loss, 0.0), MAX_TUB_C - doel)
         return {
             "advies": round(advies, 1),
             "rate": round(rate, 2),
             "rate_coast": round(rate_coast, 2),
             "last_stop_real": (
                 real_stop.strftime("%m-%d %H:%M") if real_stop else None
+            ),
+            "last_stop_temp": (
+                round(real_stop_temp, 1) if real_stop_temp is not None else None
+            ),
+            "observed_loss": (
+                round(observed_loss, 1) if observed_loss is not None else None
+            ),
+            "remaining_loss": (
+                round(remaining_loss, 1) if remaining_loss is not None else None
             ),
             "hours_end": round(hours_end, 1),
             "hours_start": round(hours_start, 1),
@@ -1448,6 +1500,9 @@ class JacuzziOvershootAdviceSensor(_ControllerSensor):
             "stijgsnelheid_k_per_u": advies["heat_rate"],
             "laatste_stop_gesimuleerd": advies["last_stop"],
             "laatste_stop_werkelijk": advies["last_stop_real"],
+            "laatste_stop_temperatuur_c": advies["last_stop_temp"],
+            "gemeten_verlies_sinds_stop_k": advies["observed_loss"],
+            "resterend_verlies_model_k": advies["remaining_loss"],
             "runs_voor_blokkade": advies["runs"],
             "bulk_bij_blokkade_start": advies["b_start"],
             "verwacht_bij_horizon_huidig": advies["end_b"],

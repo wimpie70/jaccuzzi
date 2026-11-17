@@ -182,6 +182,7 @@ class JacuzziController:
         # doorstook-advies gebruikt dit als start van de afkoeling
         # (de gesimuleerde blokgrens onderschat die duur structureel).
         self.last_run_stop: datetime | None = None
+        self.last_run_stop_c: float | None = None
         # Gemeten landing bij einde blokkade (kuip vs doel) — terugkoppeling
         # van het doorstook-advies op de werkelijkheid.
         self.peak_landing: dict | None = None
@@ -1798,6 +1799,7 @@ class JacuzziController:
                 self._flow_start_until = 0.0
                 self._flow_start_attempted = False
                 self.last_run_stop = dt_util.now()
+                self.last_run_stop_c = tub_temp if tub_valid else None
                 if not sensor_abort:
                     self._learn_heat_gain(tub_temp, now)
             if sensor_abort:
