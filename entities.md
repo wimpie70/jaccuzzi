@@ -165,6 +165,13 @@ schrijven werken.
   6 min (`VERIFY_MIX_S`), en evalueert pas dán de gemengde bulk: nog
   vraag -> hervat (max 2x, `VERIFY_MAX_RESUMES`), op temp -> klaar.
   `demand_bron` toont `meng-check` in dat venster.
+- **Circulatie-diagnose**: `sensor.jacuzzi_control_status` en
+  `climate.jacuzzi_tub_target` tonen `rem_reden`, `circulatie_reden`
+  en de blokkerende telemetrie (`pomp`, `compressor`, `uitlaat_c`,
+  `uitlaat_verse`, `probleem`). Zo is zichtbaar of de Waterfall aan
+  blijft voor warmtevraag, compressor-nakoeling, een hete/onbekende
+  uitlaat, meng-check, of dat `uitlaat onbekend` het uitschakelen
+  bewust blokkeert.
 - **Lerende retour-marge**: bij elke meng-check meet de controller
   `t = kuip_bij_stop − kuip_na_mengen` = de echte top-vs-bulk offset
   van die run (klein: ~0.5 K). Uitsluitend diagnostiek, GEEN verhoging
