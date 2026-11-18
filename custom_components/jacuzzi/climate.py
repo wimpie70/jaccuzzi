@@ -139,6 +139,8 @@ class JacuzziTubClimate(ClimateEntity, RestoreEntity):
             ATTR_RETOUR: round(self._controller.retour_offset, 1),
             "herstart_wacht_s": self._controller.restart_wait_seconds,
             "flow_aanloop_resterend_s": self._controller.flow_start_seconds,
+            "circulatie_reden": self._controller.circulation_reason,
+            **self._controller.circulation_details,
         }
 
     async def async_set_temperature(self, **kwargs) -> None:

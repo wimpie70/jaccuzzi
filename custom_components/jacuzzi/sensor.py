@@ -1240,6 +1240,15 @@ class JacuzziRegelstatusSensor(_ControllerSensor):
         """Huidige regeltoestand."""
         return self._controller.regelstatus
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Waarom blijft circulatie aan; welke telemetrie blokkeert uitgaan."""
+        return {
+            "rem_reden": self._controller.rem_reden,
+            "circulatie_reden": self._controller.circulation_reason,
+            **self._controller.circulation_details,
+        }
+
 
 class JacuzziMeetbronSensor(_ControllerSensor):
     """Leidende bron: uitsluitend kuip, met meng-check als verificatiefase."""

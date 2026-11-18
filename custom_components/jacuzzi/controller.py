@@ -211,6 +211,9 @@ class JacuzziController:
         self._suppress_at = time.monotonic()  # rust ook na startup/reload
         self._rest_s = STARTUP_REST_S
         self._afterheat_hold = False  # pomp vastgehouden voor nakoeling
+        self.circulation_reason = "geen"
+        self.circulation_details: dict = {}
+        self._last_safety_reason = ""
         self._verify_until = 0.0  # einde meng-check (monotonic)
         self._verify_pending = False  # check klaar: hervat toegestaan
         self._verify_resumes = 0  # hervattingen deze sessie
@@ -1521,8 +1524,17 @@ class JacuzziController:
         if compressor_on:
             self._compressor_recently_on = True
         self.compressor_on = compressor_on
+        if self._flow_start_attempted and compressor_on is True:
+            self._flow_start_until = 0.0
+            self._flow_start_attempted = False
         pump_on = pump.state == "on"
         problem_active = problem is not None and problem.state == "on"
+        outlet_st = self.hass.states.get(POOLEX_OUTLET_SENSOR)
+        outlet_value = _float(outlet_st, float("nan"))
+        outlet_fresh = self._fresh(outlet_st)
+        outlet_known = outlet_fresh and math.isfinite(outlet_value)
+        known_outlet_hot = outlet_known and outlet_value > POST_HEAT_OUTLET_C
+        outlet_hot = not outlet_known or known_outlet_hot
         # tub_temp kan 0.0 rapporteren tijdens RF-uitval (vessel
         # DISCONNECTED) — dat is geen echte vraag. Ook 'unavailable'
         # telt niet: stale data is geen bewijs van koud water.
@@ -1624,6 +1636,23 @@ class JacuzziController:
             if self._brake_lockout
             else ""
         )
+        if safety_reason != self._last_safety_reason:
+            if safety_reason:
+                _LOGGER.warning(
+                    "Warmteverzoek geremd: %s — kuip=%s, pomp=%s, compressor=%s, probleem=%s, poolex_sp=%s, uitlaat=%s",
+                    safety_reason,
+                    f"{demand_temp:.1f}" if demand_valid else "ongeldig",
+                    pump.state if self._fresh(pump) else "onbekend",
+                    "aan" if compressor_on is True else "uit" if compressor_on is False else "onbekend",
+                    problem.state if self._fresh(problem) else "onbekend",
+                    f"{live_sp:.1f}" if math.isfinite(live_sp) else "onbekend",
+                    f"{outlet_value:.1f}" if outlet_known else "onbekend",
+                )
+            elif self._last_safety_reason:
+                _LOGGER.info(
+                    "Veiligheidsrem vrijgegeven: %s", self._last_safety_reason
+                )
+            self._last_safety_reason = safety_reason
         self.demand_temp = demand_temp if demand_valid else None
         self.demand_bron = (
             "meng-check"
@@ -2062,15 +2091,38 @@ class JacuzziController:
         compressor_cooled = self._since_true(
             "compressor_stopped", compressor_on is False, PUMP_RUNON_S
         )
-        outlet_st = self.hass.states.get(POOLEX_OUTLET_SENSOR)
-        outlet_value = _float(outlet_st, float("nan"))
-        known_outlet_hot = self._fresh(outlet_st) and math.isfinite(outlet_value) and outlet_value > POST_HEAT_OUTLET_C
-        outlet_hot = not self._fresh(outlet_st) or not math.isfinite(outlet_value) or known_outlet_hot
         cooling_needed = (self._compressor_recently_on and not compressor_cooled) or known_outlet_hot
         mixing_needed = (bool(self._verify_until) or (
             self._verify_tub_at_stop is not None and brake_confirmed
         )) and not safety_reason
         circulation_needed = compressor_on is True or cooling_needed or mixing_needed
+        hold_reasons = []
+        if compressor_on is True:
+            hold_reasons.append("compressor actief")
+        elif self._compressor_recently_on and not compressor_cooled:
+            hold_reasons.append(
+                "compressorstatus onbekend"
+                if compressor_on is None
+                else "compressor-nakoeling"
+            )
+        if known_outlet_hot:
+            hold_reasons.append("uitlaat heet")
+        elif not outlet_known and pump_on:
+            hold_reasons.append("uitlaat onbekend")
+        if mixing_needed:
+            hold_reasons.append("meng-check")
+        if self.warmtevraag and can_restore and not peak_block:
+            hold_reasons.append("warmtevraag")
+        self.circulation_reason = ", ".join(dict.fromkeys(hold_reasons)) or "geen"
+        self.circulation_details = {
+            "pomp": pump.state if self._fresh(pump) else "onbekend",
+            "compressor": (
+                "aan" if compressor_on is True else "uit" if compressor_on is False else "onbekend"
+            ),
+            "uitlaat_c": round(outlet_value, 1) if outlet_known else None,
+            "uitlaat_verse": outlet_fresh,
+            "probleem": problem.state if self._fresh(problem) else "onbekend",
+        }
         if (
             circulation_needed
             and pump.state == "off"

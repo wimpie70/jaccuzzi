@@ -1586,6 +1586,32 @@ class SafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(15, self.temperatures())
         self.assertEqual(self.c.flow_start_seconds, 0)
 
+    async def test_midrun_fault_is_not_reported_as_startup_grace(self):
+        self.c._run_active = True
+        self.c._flow_start_attempted = True
+        self.c._flow_start_until = self.clock.value - 1
+        self.states["problem"].state = "on"
+        with self.assertLogs(self.ns["_LOGGER"], level="WARNING") as logs:
+            await self.c._async_evaluate()
+        output = "\n".join(logs.output)
+        self.assertIn("Warmteverzoek geremd: flow-storing", output)
+        self.assertNotIn("aanloopwaarschuwing", output)
+        self.assertEqual(self.c._suppress_reason, "flow-storing")
+        self.assertFalse(self.c._flow_start_attempted)
+        self.assertEqual(self.c.circulation_reason, "compressor actief")
+        self.assertEqual(self.c.circulation_details["probleem"], "on")
+
+    async def test_unknown_outlet_reports_circulation_reason(self):
+        self.states["compressor"].state = "0"
+        self.states[self.ns["POOLEX_OUTLET_SENSOR"]].state = "unavailable"
+        self.c.pump_by_us = True
+        self.c._compressor_recently_on = True
+        self.c._since["comp_idle"] = datetime.now(timezone.utc) - timedelta(minutes=10)
+        self.tub(38)
+        await self.c._async_evaluate()
+        self.assertIn("uitlaat onbekend", self.c.circulation_reason)
+        self.assertFalse(self.c.circulation_details["uitlaat_verse"])
+
     async def test_temperature_stop_and_invalid_sensor_override_flow_grace(self):
         for temp, state in [(38, "heat"), (40, "heat"), (36, "unavailable")]:
             with self.subTest(temp=temp, state=state):
